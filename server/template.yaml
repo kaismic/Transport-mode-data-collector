@@ -1,0 +1,117 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Transport mode data collector API.
+
+Globals:
+  Function:
+    Runtime: python3.14
+    Timeout: 10
+    MemorySize: 256
+    Environment:
+      Variables:
+        SESSIONS_TABLE_NAME: !Ref SessionsTable
+        INVITE_CODES_TABLE_NAME: !Ref InviteCodesTable
+        BUCKET_NAME: !Ref SessionsBucket
+    LoggingConfig:
+      LogFormat: JSON
+
+Resources:
+  SessionsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub transport-data-sessions-${AWS::AccountId}
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Suspended
+
+  SessionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TransportSessions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: session_id
+          AttributeType: S
+        - AttributeName: participant_id
+          AttributeType: S
+        - AttributeName: uploaded_at_ms
+          AttributeType: N
+      KeySchema:
+        - AttributeName: session_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: participant-id-index
+          KeySchema:
+            - AttributeName: participant_id
+              KeyType: HASH
+            - AttributeName: uploaded_at_ms
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+
+  InviteCodesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: TransportInviteCodes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: code_hash
+          AttributeType: S
+      KeySchema:
+        - AttributeName: code_hash
+          KeyType: HASH
+
+  PresignFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/presign/
+      Handler: handler.handler
+      Policies:
+        - Statement:
+            Effect: Allow
+            Action:
+              - s3:PutObject
+            Resource: !Sub "${SessionsBucket.Arn}/raw/*"
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
+        - DynamoDBReadPolicy:
+            TableName: !Ref InviteCodesTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /sessions/request-upload
+            Method: post
+
+  ConfirmFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: functions/confirm/
+      Handler: handler.handler
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref SessionsTable
+      Events:
+        Api:
+          Type: Api
+          Properties:
+            Path: /sessions/confirm-upload
+            Method: post
+
+Outputs:
+  ApiBaseUrl:
+    Description: Pass this as API_BASE_URL to Flutter.
+    Value: !Sub https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod
+  SessionsBucketName:
+    Description: Bucket containing raw uploaded session payloads.
+    Value: !Ref SessionsBucket
+  SessionsTableName:
+    Description: DynamoDB table containing session metadata.
+    Value: !Ref SessionsTable
+  InviteCodesTableName:
+    Description: DynamoDB table containing hashed invite codes.
+    Value: !Ref InviteCodesTable

@@ -1,0 +1,66 @@
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Logs and local env
+*.log
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# AWS SAM / CloudFormation
+.aws-sam/
+samconfig.toml
+packaged.yaml
+template.packaged.yaml
+
+# Local test payloads
+test_payload.json
+test_payload.json.gz
+
+# Flutter / Dart
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+build/
+coverage/
+*.iml
+
+# Android generated files
+**/android/.gradle/
+**/android/local.properties
+**/android/app/debug/
+**/android/app/profile/
+**/android/app/release/
+**/android/app/outputs/
+**/android/key.properties
+**/*.jks
+**/*.keystore
+
+# iOS/macOS generated files, in case platform support is added later
+**/ios/Pods/
+**/ios/.symlinks/
+**/ios/Flutter/Flutter.framework
+**/ios/Flutter/Flutter.podspec
+**/ios/Flutter/Generated.xcconfig
+**/ios/Flutter/ephemeral/
+**/macos/Flutter/ephemeral/
+
+# Drift generated schema/build outputs can be committed intentionally if enabled.
+# Do not ignore drift_schemas/ by default.
