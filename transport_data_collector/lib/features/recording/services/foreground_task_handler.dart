@@ -1,0 +1,120 @@
+import 'dart:async';
+
+import 'package:drift/drift.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+
+import '../../../core/database/app_database.dart';
+import '../services/sensor_service.dart';
+
+class RecordingTaskHandler extends TaskHandler {
+  AppDatabase? _db;
+  SensorService? _sensorService;
+  StreamSubscription? _sampleSubscription;
+  final _buffer = <SamplesCompanion>[];
+  String? _sessionId;
+  int? _startedAtMs;
+
+  @override
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    _sessionId = await FlutterForegroundTask.getData<String>(key: 'session_id');
+    _startedAtMs = await FlutterForegroundTask.getData<int>(
+      key: 'started_at_ms',
+    );
+    final sessionId = _sessionId;
+    if (sessionId == null) {
+      await FlutterForegroundTask.stopService();
+      return;
+    }
+
+    _db = AppDatabase();
+    _sensorService = SensorService();
+    _sampleSubscription = _sensorService!.sampleStream.listen((sample) {
+      _buffer.add(
+        SamplesCompanion.insert(
+          sessionId: sessionId,
+          timestampMs: sample.timestampMs,
+          accelX: sample.accelX,
+          accelY: sample.accelY,
+          accelZ: sample.accelZ,
+          gyroX: sample.gyroX,
+          gyroY: sample.gyroY,
+          gyroZ: sample.gyroZ,
+          magX: Value(sample.magX),
+          magY: Value(sample.magY),
+          magZ: Value(sample.magZ),
+          pressure: Value(sample.pressure),
+        ),
+      );
+    });
+  }
+
+  @override
+  void onRepeatEvent(DateTime timestamp) {
+    unawaited(_flush());
+    final startedAtMs = _startedAtMs;
+    if (startedAtMs != null) {
+      final elapsed = Duration(
+        milliseconds: DateTime.now().millisecondsSinceEpoch - startedAtMs,
+      );
+      unawaited(
+        FlutterForegroundTask.updateService(
+          notificationText: 'Elapsed ${_formatElapsed(elapsed)}',
+        ),
+      );
+    }
+  }
+
+  @override
+  Future<void> onDestroy(DateTime timestamp) async {
+    await _sampleSubscription?.cancel();
+    await _flush();
+    final db = _db;
+    final sessionId = _sessionId;
+    final sensorService = _sensorService;
+    if (db != null && sessionId != null) {
+      await db.sessionDao.markStopped(
+        id: sessionId,
+        stoppedAtMs: DateTime.now().millisecondsSinceEpoch,
+        sensorManifest:
+            sensorService?.manifest.toJson() ?? SensorManifestFallback.json,
+      );
+      await db.close();
+    }
+    await sensorService?.dispose();
+  }
+
+  @override
+  void onReceiveData(Object data) {
+    if (data == 'stop') {
+      unawaited(FlutterForegroundTask.stopService());
+    }
+  }
+
+  @override
+  void onNotificationButtonPressed(String id) {
+    if (id == 'stop') {
+      unawaited(FlutterForegroundTask.stopService());
+    }
+  }
+
+  Future<void> _flush() async {
+    final db = _db;
+    if (db == null || _buffer.isEmpty) return;
+    final rows = List<SamplesCompanion>.from(_buffer);
+    _buffer.clear();
+    await db.sampleDao.insertSamples(rows);
+  }
+
+  String _formatElapsed(Duration elapsed) {
+    final minutes = elapsed.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = elapsed.inSeconds.remainder(60).toString().padLeft(2, '0');
+    final hours = elapsed.inHours;
+    return hours > 0 ? '$hours:$minutes:$seconds' : '$minutes:$seconds';
+  }
+}
+
+class SensorManifestFallback {
+  static const json =
+      '{"accelerometer":{"available":false},"gyroscope":{"available":false},'
+      '"magnetometer":{"available":false},"barometer":{"available":false}}';
+}

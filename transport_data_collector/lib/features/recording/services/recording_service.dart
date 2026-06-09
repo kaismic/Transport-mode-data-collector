@@ -1,0 +1,122 @@
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:uuid/uuid.dart';
+
+import '../../../core/database/app_database.dart';
+import '../../../core/transport_modes.dart';
+import '../models/sensor_manifest.dart';
+import 'foreground_task_handler.dart';
+
+@pragma('vm:entry-point')
+void startRecordingCallback() {
+  FlutterForegroundTask.setTaskHandler(RecordingTaskHandler());
+}
+
+class RecordingService {
+  RecordingService(this._db);
+
+  final AppDatabase _db;
+
+  static void initForegroundTask() {
+    FlutterForegroundTask.init(
+      androidNotificationOptions: AndroidNotificationOptions(
+        channelId: 'transport_recording',
+        channelName: 'Transport recording',
+        channelDescription: 'Shows active transport data recording sessions.',
+        channelImportance: NotificationChannelImportance.LOW,
+        priority: NotificationPriority.LOW,
+        onlyAlertOnce: true,
+      ),
+      iosNotificationOptions: const IOSNotificationOptions(),
+      foregroundTaskOptions: ForegroundTaskOptions(
+        eventAction: ForegroundTaskEventAction.repeat(1000),
+        allowWakeLock: true,
+      ),
+    );
+  }
+
+  Future<String> startSession({
+    required String deviceUuid,
+    required String vehicleType,
+  }) async {
+    if (!allowedVehicleTypes.contains(vehicleType)) {
+      throw ArgumentError.value(vehicleType, 'vehicleType', 'Unsupported type');
+    }
+
+    await Permission.notification.request();
+    initForegroundTask();
+
+    final sessionId = const Uuid().v4();
+    final startedAtMs = DateTime.now().millisecondsSinceEpoch;
+    await _db.sessionDao.insertSession(
+      SessionsCompanion.insert(
+        id: sessionId,
+        deviceUuid: deviceUuid,
+        vehicleType: vehicleType,
+        startedAtMs: startedAtMs,
+        sensorManifest: SensorManifest.empty().toJson(),
+      ),
+    );
+
+    await FlutterForegroundTask.saveData(key: 'session_id', value: sessionId);
+    await FlutterForegroundTask.saveData(
+      key: 'started_at_ms',
+      value: startedAtMs,
+    );
+
+    final mode = transportModeFor(vehicleType);
+    final result = await FlutterForegroundTask.startService(
+      serviceId: 4101,
+      notificationTitle: 'Recording ${mode.label}',
+      notificationText: 'Elapsed 00:00',
+      notificationButtons: [const NotificationButton(id: 'stop', text: 'Stop')],
+      callback: startRecordingCallback,
+    );
+    if (result is ServiceRequestFailure) {
+      await FlutterForegroundTask.removeData(key: 'session_id');
+      await FlutterForegroundTask.removeData(key: 'started_at_ms');
+      await _db.sessionDao.deleteSessionWithSamples(sessionId);
+      throw Exception('Could not start foreground service: ${result.error}');
+    }
+    return sessionId;
+  }
+
+  Future<void> stopSession() async {
+    FlutterForegroundTask.sendDataToTask('stop');
+  }
+
+  Future<ActiveRecordingSession?> restoreActiveSession() async {
+    if (!await isRecording) return null;
+
+    final sessionId = await FlutterForegroundTask.getData<String>(
+      key: 'session_id',
+    );
+    final startedAtMs = await FlutterForegroundTask.getData<int>(
+      key: 'started_at_ms',
+    );
+    if (sessionId == null || startedAtMs == null) return null;
+
+    final session = await _db.sessionDao.getSession(sessionId);
+    if (session == null || session.stoppedAtMs != null) return null;
+
+    return ActiveRecordingSession(
+      sessionId: sessionId,
+      vehicleType: session.vehicleType,
+      startedAtMs: startedAtMs,
+    );
+  }
+
+  Future<bool> get isRecording => FlutterForegroundTask.isRunningService;
+}
+
+class ActiveRecordingSession {
+  const ActiveRecordingSession({
+    required this.sessionId,
+    required this.vehicleType,
+    required this.startedAtMs,
+  });
+
+  final String sessionId;
+  final String vehicleType;
+  final int startedAtMs;
+}

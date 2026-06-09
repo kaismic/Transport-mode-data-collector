@@ -107,7 +107,7 @@ In `android/app/src/main/AndroidManifest.xml`, add inside `<manifest>`:
 
 ```xml
 <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SENSOR"/>
+<uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
 <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
 <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
 ```
@@ -116,9 +116,13 @@ Inside `<application>`:
 
 ```xml
 <service
-    android:name="com.pravera.flutter_foreground_task.service.ForegroundTaskService"
-    android:foregroundServiceType="sensor"
-    android:exported="false"/>
+    android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+    android:foregroundServiceType="specialUse"
+    android:exported="false">
+    <property
+        android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+        android:value="Research transport-mode recording using device motion sensors"/>
+</service>
 ```
 
 ### 1.4 Directory structure
@@ -1112,7 +1116,7 @@ def load_session(s3_key: str) -> dict:
 - [ ] Trim adjustments persist to `trimmedStartMs`/`trimmedEndMs` in the DB
 - [ ] Upload serialises only samples within the trim range and gzip-compresses the body
 - [ ] `UploadService` completes the full three-step flow (presign → PUT → confirm)
-- [ ] `ConfirmException` is treated as a soft warning; `confirmPending` flag is set and retried on next launch
+- [x] `ConfirmException` is treated as a soft warning; `confirmPending` flag is set and retried on next launch
 - [ ] Upload marks session with `uploadedAtMs` on success
 - [ ] Hard upload failures show an error and allow retry
 - [ ] App handles missing barometer gracefully (no crash, manifest shows `available: false`)

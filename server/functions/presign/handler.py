@@ -9,6 +9,8 @@ import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.config import Config
 
+from json_utils import loads_for_dynamodb
+
 
 s3 = boto3.client(
     "s3",
@@ -92,7 +94,7 @@ def _json_body(event):
     if event.get("isBase64Encoded"):
         raw_body = base64.b64decode(raw_body).decode("utf-8")
     try:
-        return json.loads(raw_body)
+        return loads_for_dynamodb(raw_body)
     except json.JSONDecodeError as exc:
         raise ValidationError("Request body must be valid JSON") from exc
 
