@@ -65,9 +65,7 @@ class SensorService {
     );
 
     _subscriptions.add(
-      barometerEventStream(
-        samplingPeriod: SensorInterval.normalInterval,
-      ).listen((event) {
+      barometerEventStream(samplingPeriod: targetPeriod).listen((event) {
         _barometerAvailable = true;
         _latestPressure = event.pressure;
         _window.mark(_SensorKind.barometer);
