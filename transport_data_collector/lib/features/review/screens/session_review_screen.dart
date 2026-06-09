@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/invite_code_store.dart';
 import '../../../core/time_format.dart';
 import '../../../core/transport_modes.dart';
+import '../../setup/screens/setup_screen.dart';
 import '../../upload/bloc/upload_bloc.dart';
 
 class SessionReviewScreen extends StatefulWidget {
@@ -21,6 +23,7 @@ class SessionReviewScreen extends StatefulWidget {
 class _SessionReviewScreenState extends State<SessionReviewScreen> {
   late Future<_SessionDetail> _detailFuture;
   RangeValues? _trimValues;
+  var _uploadRequested = false;
 
   @override
   void didChangeDependencies() {
@@ -40,19 +43,21 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<UploadBloc, UploadState>(
+    return BlocConsumer<UploadBloc, UploadState>(
       listener: (context, state) {
-        if (state is UploadSuccess) {
+        if (state is UploadSuccess && state.sessionId == widget.sessionId) {
           _showSnack('Upload complete');
-          _refresh();
-        } else if (state is UploadConfirmPending) {
+          _refresh(uploadRequested: false);
+        } else if (state is UploadConfirmPending &&
+            state.sessionId == widget.sessionId) {
           _showSnack('Uploaded; confirmation will retry later');
-          _refresh();
-        } else if (state is UploadFailure) {
+          _refresh(uploadRequested: false);
+        } else if (state is UploadFailure && _uploadRequested) {
+          setState(() => _uploadRequested = false);
           _showSnack(state.message);
         }
       },
-      child: Scaffold(
+      builder: (context, uploadState) => Scaffold(
         appBar: AppBar(title: const Text('Session Review')),
         body: FutureBuilder<_SessionDetail>(
           future: _detailFuture,
@@ -66,6 +71,19 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
             final detail = snapshot.data!;
             final session = detail.session;
             final stoppedAtMs = session.stoppedAtMs;
+            final uploadCompletedInState =
+                (uploadState is UploadSuccess &&
+                    uploadState.sessionId == session.id) ||
+                (uploadState is UploadConfirmPending &&
+                    uploadState.sessionId == session.id);
+            final isUploaded =
+                session.uploadedAtMs != null || uploadCompletedInState;
+            final isUploading =
+                _uploadRequested ||
+                (uploadState is UploadInProgress &&
+                    uploadState.sessionId == session.id);
+            final canEdit = stoppedAtMs != null && !isUploaded && !isUploading;
+            final canDelete = canEdit;
             final maxSeconds = detail.duration.inSeconds.toDouble().clamp(
               1,
               double.infinity,
@@ -108,7 +126,7 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
                     ),
                     formatDuration(Duration(seconds: currentTrim.end.round())),
                   ),
-                  onChanged: stoppedAtMs == null
+                  onChanged: !canEdit
                       ? null
                       : (values) => setState(() => _trimValues = values),
                 ),
@@ -116,15 +134,34 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
                 _StatsPanel(detail: detail),
                 const SizedBox(height: 20),
                 FilledButton.icon(
-                  onPressed: stoppedAtMs == null
+                  onPressed: !canEdit
                       ? null
                       : () => _saveTrimAndUpload(detail, currentTrim),
-                  icon: const Icon(Icons.cloud_upload),
-                  label: const Text('Confirm & Upload'),
+                  icon: isUploading
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : Icon(
+                          session.confirmPending
+                              ? Icons.schedule
+                              : isUploaded
+                              ? Icons.cloud_done
+                              : Icons.cloud_upload,
+                        ),
+                  label: Text(
+                    isUploading
+                        ? 'Uploading...'
+                        : session.confirmPending
+                        ? 'Awaiting Confirmation'
+                        : isUploaded
+                        ? 'Uploaded'
+                        : 'Confirm & Upload',
+                  ),
                 ),
                 const SizedBox(height: 8),
                 OutlinedButton.icon(
-                  onPressed: () => _confirmDelete(context),
+                  onPressed: canDelete ? () => _confirmDelete(context) : null,
                   icon: const Icon(Icons.delete_outline),
                   label: const Text('Delete'),
                   style: OutlinedButton.styleFrom(
@@ -143,52 +180,48 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
     _SessionDetail detail,
     RangeValues trim,
   ) async {
+    if (_uploadRequested) return;
+    setState(() => _uploadRequested = true);
+
     final db = context.read<AppDatabase>();
     final uploadBloc = context.read<UploadBloc>();
-    final inviteCode = await _askInviteCode();
-    if (inviteCode == null || inviteCode.trim().isEmpty) return;
-    await db.sessionDao.updateTrim(
-      id: detail.session.id,
-      trimmedStartMs: detail.session.startedAtMs + (trim.start * 1000).round(),
-      trimmedEndMs: detail.session.startedAtMs + (trim.end * 1000).round(),
-    );
-    if (!mounted) return;
-    uploadBloc.add(
-      UploadSessionRequested(
-        sessionId: detail.session.id,
-        inviteCode: inviteCode.trim(),
-      ),
-    );
-  }
-
-  Future<String?> _askInviteCode() {
-    var inviteCode = '';
-    return showDialog<String>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('Invite Code'),
-          content: TextField(
-            autofocus: true,
-            textCapitalization: TextCapitalization.characters,
-            textInputAction: TextInputAction.done,
-            decoration: const InputDecoration(labelText: 'Code'),
-            onChanged: (value) => inviteCode = value,
-            onSubmitted: (value) => Navigator.of(context).pop(value),
+    final inviteCodeStore = context.read<InviteCodeStore>();
+    try {
+      var inviteCode = inviteCodeStore.inviteCode;
+      if (inviteCode == null) {
+        final saved = await Navigator.of(context).push<bool>(
+          MaterialPageRoute<bool>(
+            builder: (_) => SetupScreen(inviteCodeStore: inviteCodeStore),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(inviteCode),
-              child: const Text('Upload'),
-            ),
-          ],
         );
-      },
-    );
+        if (saved != true || !mounted) {
+          if (mounted) setState(() => _uploadRequested = false);
+          return;
+        }
+        inviteCode = inviteCodeStore.inviteCode;
+        if (inviteCode == null) {
+          setState(() => _uploadRequested = false);
+          return;
+        }
+      }
+      await db.sessionDao.updateTrim(
+        id: detail.session.id,
+        trimmedStartMs:
+            detail.session.startedAtMs + (trim.start * 1000).round(),
+        trimmedEndMs: detail.session.startedAtMs + (trim.end * 1000).round(),
+      );
+      if (!mounted) return;
+      uploadBloc.add(
+        UploadSessionRequested(
+          sessionId: detail.session.id,
+          inviteCode: inviteCode,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _uploadRequested = false);
+      _showSnack('Could not prepare upload: $error');
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
@@ -216,8 +249,11 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
     if (context.mounted) Navigator.of(context).pop();
   }
 
-  void _refresh() {
+  void _refresh({bool? uploadRequested}) {
     setState(() {
+      if (uploadRequested != null) {
+        _uploadRequested = uploadRequested;
+      }
       _trimValues = null;
       _detailFuture = _loadDetail();
     });

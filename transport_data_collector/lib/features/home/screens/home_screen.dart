@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/invite_code_store.dart';
 import '../../../core/time_format.dart';
 import '../../../core/transport_modes.dart';
 import '../../recording/bloc/recording_bloc.dart';
 import '../../review/screens/review_list_screen.dart';
+import '../../setup/screens/setup_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key, required this.deviceUuid});
@@ -40,7 +42,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final db = context.read<AppDatabase>();
     return Scaffold(
-      appBar: AppBar(title: const Text('Transport Data Collector')),
+      appBar: AppBar(
+        title: const Text('Transport Data Collector'),
+        actions: [
+          IconButton(
+            onPressed: _editInviteCode,
+            tooltip: 'Change invite code',
+            icon: const Icon(Icons.key),
+          ),
+        ],
+      ),
       body: BlocConsumer<RecordingBloc, RecordingState>(
         listener: (context, state) {
           if (state is RecordingError) {
@@ -104,6 +115,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             },
           );
         },
+      ),
+    );
+  }
+
+  Future<void> _editInviteCode() async {
+    final store = context.read<InviteCodeStore>();
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => SetupScreen(inviteCodeStore: store),
       ),
     );
   }

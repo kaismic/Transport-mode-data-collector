@@ -93,6 +93,9 @@ class UploadBloc extends Bloc<UploadEvent, UploadState> {
       if (session == null) {
         throw StateError('Session not found.');
       }
+      if (session.uploadedAtMs != null) {
+        throw StateError('Session has already been uploaded.');
+      }
       final samples = await database.sampleDao.getSamplesForSession(
         event.sessionId,
       );

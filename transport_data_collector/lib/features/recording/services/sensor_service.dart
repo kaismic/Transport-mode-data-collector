@@ -46,7 +46,7 @@ class SensorService {
   }
 
   void _start() {
-    const targetPeriod = SensorInterval.gameInterval;
+    const targetPeriod = SensorInterval.normalInterval;
 
     _subscriptions.add(
       gyroscopeEventStream(samplingPeriod: targetPeriod).listen((event) {
