@@ -95,6 +95,7 @@ void main() {
           .first;
       stopCompleter.complete();
       expect(await idleState, isA<RecordingIdle>());
+      expect(service.stoppedSessionId, 'session-id');
       await bloc.close();
     },
   );
@@ -109,10 +110,14 @@ class _FakeRecordingService extends RecordingService {
 
   final ActiveRecordingSession? activeSession;
   final Completer<void>? stopCompleter;
+  String? stoppedSessionId;
 
   @override
   Future<ActiveRecordingSession?> restoreActiveSession() async => activeSession;
 
   @override
-  Future<void> stopSession() => stopCompleter?.future ?? Future<void>.value();
+  Future<void> stopSession({required String sessionId}) {
+    stoppedSessionId = sessionId;
+    return stopCompleter?.future ?? Future<void>.value();
+  }
 }

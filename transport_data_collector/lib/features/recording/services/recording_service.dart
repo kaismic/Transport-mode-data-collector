@@ -81,11 +81,36 @@ class RecordingService {
     return sessionId;
   }
 
-  Future<void> stopSession() async {
-    final result = await FlutterForegroundTask.stopService();
-    if (result is ServiceRequestFailure) {
-      throw Exception('Could not stop foreground service: ${result.error}');
+  Future<void> stopSession({required String sessionId}) async {
+    final result = await stopForegroundService();
+    final stillRunning = await isRecording;
+    if (stillRunning) {
+      final reason = result is ServiceRequestFailure
+          ? result.error
+          : 'service is still running';
+      throw Exception('Could not stop foreground service: $reason');
     }
+
+    final session = await _db.sessionDao.getSession(sessionId);
+    if (session != null && session.stoppedAtMs == null) {
+      // The task isolate has a separate Drift connection, so its write does not
+      // invalidate streams owned by the UI connection.
+      await _db.sessionDao.markStopped(
+        id: sessionId,
+        stoppedAtMs: DateTime.now().millisecondsSinceEpoch,
+        sensorManifest: session.sensorManifest,
+      );
+    }
+    await clearRecordingMetadata();
+  }
+
+  Future<ServiceRequestResult> stopForegroundService() {
+    return FlutterForegroundTask.stopService();
+  }
+
+  Future<void> clearRecordingMetadata() async {
+    await FlutterForegroundTask.removeData(key: 'session_id');
+    await FlutterForegroundTask.removeData(key: 'started_at_ms');
   }
 
   Future<ActiveRecordingSession?> restoreActiveSession() async {

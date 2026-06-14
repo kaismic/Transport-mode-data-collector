@@ -150,9 +150,35 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
     StopRecordingRequested event,
     Emitter<RecordingState> emit,
   ) async {
-    await recordingService.stopSession();
+    final current = state;
+    if (current is! RecordingActive) return;
     _timer?.cancel();
-    emit(const RecordingIdle());
+    try {
+      await recordingService.stopSession(sessionId: current.sessionId);
+      emit(const RecordingIdle());
+    } catch (error) {
+      emit(RecordingError('Could not stop recording: $error'));
+      try {
+        final activeSession = await recordingService.restoreActiveSession();
+        if (activeSession == null) {
+          _timer?.cancel();
+          emit(const RecordingIdle());
+          return;
+        }
+        _startTimer();
+        emit(
+          RecordingActive(
+            sessionId: activeSession.sessionId,
+            vehicleType: activeSession.vehicleType,
+            startedAtMs: activeSession.startedAtMs,
+            elapsed: _elapsedSince(activeSession.startedAtMs),
+          ),
+        );
+      } catch (_) {
+        _timer?.cancel();
+        emit(const RecordingIdle());
+      }
+    }
   }
 
   void _onTicked(_RecordingTicked event, Emitter<RecordingState> emit) {
