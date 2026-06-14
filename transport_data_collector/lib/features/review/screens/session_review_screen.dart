@@ -3,6 +3,7 @@ import 'dart:math';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter/services.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/invite_code_store.dart';
@@ -22,7 +23,12 @@ class SessionReviewScreen extends StatefulWidget {
 
 class _SessionReviewScreenState extends State<SessionReviewScreen> {
   late Future<_SessionDetail> _detailFuture;
+  final _trimStartController = TextEditingController();
+  final _trimEndController = TextEditingController();
   RangeValues? _trimValues;
+  String? _trimStartError;
+  String? _trimEndError;
+  var _trimInputsInitialized = false;
   var _uploadRequested = false;
 
   @override
@@ -39,6 +45,13 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
     }
     final samples = await db.sampleDao.getSamplesForSession(widget.sessionId);
     return _SessionDetail(session: session, samples: samples);
+  }
+
+  @override
+  void dispose() {
+    _trimStartController.dispose();
+    _trimEndController.dispose();
+    super.dispose();
   }
 
   @override
@@ -83,6 +96,8 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
                 (uploadState is UploadInProgress &&
                     uploadState.sessionId == session.id);
             final canEdit = stoppedAtMs != null && !isUploaded && !isUploading;
+            final canSubmit =
+                canEdit && _trimStartError == null && _trimEndError == null;
             final canDelete = canEdit;
             final maxSeconds = detail.duration.inSeconds.toDouble().clamp(
               1,
@@ -100,6 +115,7 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
                           session.startedAtMs) /
                       1000,
                 );
+            _initializeTrimInputs(currentTrim);
             return ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -128,35 +144,71 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
                   ),
                   onChanged: !canEdit
                       ? null
-                      : (values) => setState(() => _trimValues = values),
+                      : (values) => _setTrimFromSlider(values),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _TrimTimeField(
+                        fieldKey: const Key('trim-start-field'),
+                        label: 'Start',
+                        controller: _trimStartController,
+                        enabled: canEdit,
+                        errorText: _trimStartError,
+                        onChanged: (_) => _setTrimFromText(
+                          isStart: true,
+                          maxSeconds: maxSeconds.toDouble(),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _TrimTimeField(
+                        fieldKey: const Key('trim-end-field'),
+                        label: 'End',
+                        controller: _trimEndController,
+                        enabled: canEdit,
+                        errorText: _trimEndError,
+                        onChanged: (_) => _setTrimFromText(
+                          isStart: false,
+                          maxSeconds: maxSeconds.toDouble(),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
                 const SizedBox(height: 8),
                 _StatsPanel(detail: detail),
                 const SizedBox(height: 20),
-                FilledButton.icon(
-                  onPressed: !canEdit
-                      ? null
-                      : () => _saveTrimAndUpload(detail, currentTrim),
-                  icon: isUploading
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Icon(
-                          session.confirmPending
-                              ? Icons.schedule
-                              : isUploaded
-                              ? Icons.cloud_done
-                              : Icons.cloud_upload,
-                        ),
-                  label: Text(
-                    isUploading
-                        ? 'Uploading...'
-                        : session.confirmPending
-                        ? 'Awaiting Confirmation'
-                        : isUploaded
-                        ? 'Uploaded'
-                        : 'Confirm & Upload',
+                KeyedSubtree(
+                  key: const Key('confirm-upload-action'),
+                  child: FilledButton.icon(
+                    onPressed: !canSubmit
+                        ? null
+                        : () => _saveTrimAndUpload(detail, currentTrim),
+                    icon: isUploading
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            session.confirmPending
+                                ? Icons.schedule
+                                : isUploaded
+                                ? Icons.cloud_done
+                                : Icons.cloud_upload,
+                          ),
+                    label: Text(
+                      isUploading
+                          ? 'Uploading...'
+                          : session.confirmPending
+                          ? 'Awaiting Confirmation'
+                          : isUploaded
+                          ? 'Uploaded'
+                          : 'Confirm & Upload',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -224,6 +276,47 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
     }
   }
 
+  void _initializeTrimInputs(RangeValues trim) {
+    if (_trimInputsInitialized) return;
+    _trimInputsInitialized = true;
+    _trimStartController.text = _formatTrimTime(trim.start);
+    _trimEndController.text = _formatTrimTime(trim.end);
+  }
+
+  void _setTrimFromSlider(RangeValues values) {
+    setState(() {
+      _trimValues = values;
+      _trimStartError = null;
+      _trimEndError = null;
+      _trimStartController.text = _formatTrimTime(values.start);
+      _trimEndController.text = _formatTrimTime(values.end);
+    });
+  }
+
+  void _setTrimFromText({required bool isStart, required double maxSeconds}) {
+    final start = _parseTrimTime(_trimStartController.text);
+    final end = _parseTrimTime(_trimEndController.text);
+    var startError = start == null ? 'Use MM:SS' : null;
+    var endError = end == null ? 'Use MM:SS' : null;
+    final maxMessage = 'Max ${_formatTrimTime(maxSeconds)}';
+    if (start != null && start > maxSeconds) startError = maxMessage;
+    if (end != null && end > maxSeconds) endError = maxMessage;
+    if (startError == null && endError == null && start! > end!) {
+      if (isStart) {
+        startError = 'After end';
+      } else {
+        endError = 'Before start';
+      }
+    }
+    setState(() {
+      _trimStartError = startError;
+      _trimEndError = endError;
+      if (startError == null && endError == null) {
+        _trimValues = RangeValues(start!, end!);
+      }
+    });
+  }
+
   Future<void> _confirmDelete(BuildContext context) async {
     final confirmed = await showDialog<bool>(
       context: context,
@@ -255,6 +348,9 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
         _uploadRequested = uploadRequested;
       }
       _trimValues = null;
+      _trimStartError = null;
+      _trimEndError = null;
+      _trimInputsInitialized = false;
       _detailFuture = _loadDetail();
     });
   }
@@ -264,6 +360,60 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
   }
+}
+
+class _TrimTimeField extends StatelessWidget {
+  const _TrimTimeField({
+    required this.fieldKey,
+    required this.label,
+    required this.controller,
+    required this.enabled,
+    required this.errorText,
+    required this.onChanged,
+  });
+
+  final Key fieldKey;
+  final String label;
+  final TextEditingController controller;
+  final bool enabled;
+  final String? errorText;
+  final ValueChanged<String> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      key: fieldKey,
+      controller: controller,
+      enabled: enabled,
+      keyboardType: TextInputType.datetime,
+      inputFormatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9:]'))],
+      decoration: InputDecoration(
+        labelText: label,
+        hintText: 'MM:SS',
+        errorText: errorText,
+        border: const OutlineInputBorder(),
+      ),
+      onChanged: onChanged,
+    );
+  }
+}
+
+String _formatTrimTime(double seconds) {
+  return formatDuration(Duration(seconds: seconds.round()));
+}
+
+double? _parseTrimTime(String value) {
+  final parts = value.trim().split(':');
+  if (parts.length != 2 && parts.length != 3) return null;
+  final values = parts.map(int.tryParse).toList();
+  if (values.any((part) => part == null)) return null;
+
+  final hours = parts.length == 3 ? values[0]! : 0;
+  final minutes = parts.length == 3 ? values[1]! : values[0]!;
+  final seconds = parts.length == 3 ? values[2]! : values[1]!;
+  if (hours < 0 || minutes < 0 || seconds < 0) return null;
+  if ((parts.length == 3 && minutes >= 60) || seconds >= 60) return null;
+  return (hours * 3600 + minutes * 60 + seconds).toDouble();
 }
 
 class _MagnitudeChart extends StatelessWidget {

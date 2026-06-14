@@ -43,16 +43,79 @@ void main() {
     );
     expect(
       tester
-          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Uploaded'))
-          .onPressed,
-      isNull,
+          .widget<TextField>(find.byKey(const Key('trim-start-field')))
+          .enabled,
+      isFalse,
     );
-    await tester.scrollUntilVisible(find.text('Delete'), 200);
+    expect(
+      tester.widget<TextField>(find.byKey(const Key('trim-end-field'))).enabled,
+      isFalse,
+    );
+    final uploadedAction = find.byKey(const Key('confirm-upload-action'));
+    final uploadedButton = find.descendant(
+      of: uploadedAction.first,
+      matching: find.byType(FilledButton),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(uploadedButton.last).onPressed, isNull);
     expect(
       tester
           .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, 'Delete'))
           .onPressed,
       isNull,
+    );
+  });
+
+  testWidgets('time fields and range slider stay synchronized', (tester) async {
+    await _insertSession(database, stoppedAtMs: 121000);
+
+    await _pumpReviewScreen(
+      tester,
+      database: database,
+      inviteCodeStore: inviteCodeStore,
+      uploadService: _CompletingUploadService(),
+    );
+
+    final startField = find.byKey(const Key('trim-start-field'));
+    final endField = find.byKey(const Key('trim-end-field'));
+    expect(tester.widget<TextField>(startField).controller!.text, '00:00');
+    expect(tester.widget<TextField>(endField).controller!.text, '02:00');
+
+    await tester.enterText(startField, '00:15');
+    await tester.enterText(endField, '01:45');
+    await tester.pump();
+
+    expect(
+      tester.widget<RangeSlider>(find.byType(RangeSlider)).values,
+      const RangeValues(15, 105),
+    );
+
+    final slider = tester.widget<RangeSlider>(find.byType(RangeSlider));
+    slider.onChanged!(const RangeValues(30, 90));
+    await tester.pump();
+
+    expect(tester.widget<TextField>(startField).controller!.text, '00:30');
+    expect(tester.widget<TextField>(endField).controller!.text, '01:30');
+  });
+
+  testWidgets('time fields reject values outside the session', (tester) async {
+    await _insertSession(database, stoppedAtMs: 121000);
+
+    await _pumpReviewScreen(
+      tester,
+      database: database,
+      inviteCodeStore: inviteCodeStore,
+      uploadService: _CompletingUploadService(),
+    );
+
+    await tester.enterText(find.byKey(const Key('trim-start-field')), '02:01');
+    await tester.pump();
+
+    expect(find.text('Max 02:00'), findsOneWidget);
+    expect(
+      tester.widget<RangeSlider>(find.byType(RangeSlider)).values,
+      const RangeValues(0, 120),
     );
   });
 
@@ -69,10 +132,14 @@ void main() {
       uploadService: uploadService,
     );
 
-    await tester.scrollUntilVisible(find.text('Confirm & Upload'), 200);
-    await tester.drag(find.byType(ListView), const Offset(0, -80));
+    final uploadAction = find.byKey(const Key('confirm-upload-action'));
+    final uploadButton = find.descendant(
+      of: uploadAction.first,
+      matching: find.byType(FilledButton),
+    );
+    await tester.drag(find.byType(ListView), const Offset(0, -500));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Confirm & Upload'));
+    await tester.tap(uploadButton.last);
     await tester.pump();
 
     expect(find.text('Uploading...'), findsOneWidget);
@@ -119,15 +186,19 @@ Future<void> _pumpReviewScreen(
   await tester.pumpAndSettle();
 }
 
-Future<void> _insertSession(AppDatabase database, {int? uploadedAtMs}) async {
+Future<void> _insertSession(
+  AppDatabase database, {
+  int? uploadedAtMs,
+  int stoppedAtMs = 2000,
+}) async {
   await database.sessionDao.insertSession(
     SessionsCompanion.insert(
       id: 'session-id',
       deviceUuid: 'device-id',
       vehicleType: 'car',
       startedAtMs: 1000,
-      stoppedAtMs: const Value(2000),
-      trimmedEndMs: const Value(2000),
+      stoppedAtMs: Value(stoppedAtMs),
+      trimmedEndMs: Value(stoppedAtMs),
       uploadedAtMs: Value(uploadedAtMs),
       sensorManifest: '{}',
     ),
