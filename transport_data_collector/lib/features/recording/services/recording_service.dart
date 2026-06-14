@@ -82,7 +82,10 @@ class RecordingService {
   }
 
   Future<void> stopSession() async {
-    FlutterForegroundTask.sendDataToTask('stop');
+    final result = await FlutterForegroundTask.stopService();
+    if (result is ServiceRequestFailure) {
+      throw Exception('Could not stop foreground service: ${result.error}');
+    }
   }
 
   Future<ActiveRecordingSession?> restoreActiveSession() async {

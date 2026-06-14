@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transport_data_collector/core/database/app_database.dart';
@@ -59,13 +61,58 @@ void main() {
     );
     await bloc.close();
   });
+
+  test(
+    'waits for foreground service teardown before returning to idle',
+    () async {
+      final stopCompleter = Completer<void>();
+      final service = _FakeRecordingService(
+        database,
+        activeSession: ActiveRecordingSession(
+          sessionId: 'session-id',
+          vehicleType: 'train',
+          startedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+        stopCompleter: stopCompleter,
+      );
+      final bloc = RecordingBloc(
+        recordingService: service,
+        deviceUuid: 'device-id',
+      );
+
+      await bloc.stream
+          .where((state) => state is RecordingActive)
+          .cast<RecordingActive>()
+          .first;
+      bloc.add(const StopRecordingRequested());
+      await Future<void>.delayed(Duration.zero);
+
+      expect(bloc.state, isA<RecordingActive>());
+
+      final idleState = bloc.stream
+          .where((state) => state is RecordingIdle)
+          .cast<RecordingIdle>()
+          .first;
+      stopCompleter.complete();
+      expect(await idleState, isA<RecordingIdle>());
+      await bloc.close();
+    },
+  );
 }
 
 class _FakeRecordingService extends RecordingService {
-  _FakeRecordingService(super.database, {this.activeSession});
+  _FakeRecordingService(
+    super.database, {
+    this.activeSession,
+    this.stopCompleter,
+  });
 
   final ActiveRecordingSession? activeSession;
+  final Completer<void>? stopCompleter;
 
   @override
   Future<ActiveRecordingSession?> restoreActiveSession() async => activeSession;
+
+  @override
+  Future<void> stopSession() => stopCompleter?.future ?? Future<void>.value();
 }
