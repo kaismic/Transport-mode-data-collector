@@ -19,7 +19,7 @@ void startRecordingCallback() {
 class RecordingService {
   RecordingService(
     this._db, {
-    this.recordingReadyTimeout = const Duration(seconds: 10),
+    this.recordingReadyTimeout = const Duration(seconds: 5),
   });
 
   final AppDatabase _db;
