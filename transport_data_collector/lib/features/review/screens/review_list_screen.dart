@@ -53,7 +53,7 @@ class ReviewListScreen extends StatelessWidget {
                     key: const Key('upload-all-button'),
                     onPressed: uploadInProgress || pendingCount == 0
                         ? null
-                        : () => _uploadAll(context),
+                        : () => _uploadAll(context, pendingCount),
                     icon: batchState == null
                         ? const Icon(Icons.cloud_upload)
                         : const SizedBox.square(
@@ -125,7 +125,28 @@ class ReviewListScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _uploadAll(BuildContext context) async {
+  Future<void> _uploadAll(BuildContext context, int pendingCount) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Upload all sessions?'),
+        content: Text(
+          'This will upload ${_formatPendingCount(pendingCount)}. Continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Upload All'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !context.mounted) return;
+
     final inviteCodeStore = context.read<InviteCodeStore>();
     var inviteCode = inviteCodeStore.inviteCode;
     if (inviteCode == null) {
@@ -139,6 +160,10 @@ class ReviewListScreen extends StatelessWidget {
     }
     if (inviteCode == null || !context.mounted) return;
     context.read<UploadBloc>().add(UploadAllRequested(inviteCode: inviteCode));
+  }
+
+  String _formatPendingCount(int count) {
+    return count == 1 ? '1 pending session' : '$count pending sessions';
   }
 }
 
