@@ -61,6 +61,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           }
         },
         builder: (context, recordingState) {
+          final isRecording = recordingState is RecordingActive;
+          final isRestoring = recordingState is RecordingRestoring;
           return StreamBuilder<List<Session>>(
             stream: db.sessionDao.watchAllSessions(),
             builder: (context, snapshot) {
@@ -74,12 +76,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               return ListView(
                 padding: const EdgeInsets.all(20),
                 children: [
-                  if (recordingState is RecordingRestoring)
-                    const LinearProgressIndicator(),
-                  if (recordingState is RecordingRestoring)
-                    const SizedBox(height: 16),
-                  if (recordingState is RecordingActive)
-                    _RecordingBanner(state: recordingState),
+                  if (isRestoring) const LinearProgressIndicator(),
+                  if (isRestoring) const SizedBox(height: 16),
+                  if (isRecording) _RecordingBanner(state: recordingState),
                   _DevicePanel(deviceUuid: widget.deviceUuid),
                   const SizedBox(height: 16),
                   _SummaryRow(
@@ -88,15 +87,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     uploaded: uploaded,
                   ),
                   const SizedBox(height: 24),
-                  FilledButton.icon(
-                    onPressed:
-                        recordingState is RecordingStarting ||
-                            recordingState is RecordingRestoring ||
-                            recordingState is RecordingActive
-                        ? null
-                        : () => _showVehicleSheet(context),
-                    icon: const Icon(Icons.fiber_manual_record),
-                    label: const Text('Start Recording'),
+                  RecordingActionButton(
+                    recordingState: recordingState,
+                    onStartRecording: () => _showVehicleSheet(context),
+                    onStopRecording: () {
+                      context.read<RecordingBloc>().add(
+                        const StopRecordingRequested(),
+                      );
+                    },
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
@@ -170,6 +168,48 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 }
 
+class RecordingActionButton extends StatelessWidget {
+  const RecordingActionButton({
+    super.key,
+    required this.recordingState,
+    required this.onStartRecording,
+    required this.onStopRecording,
+  });
+
+  final RecordingState recordingState;
+  final VoidCallback onStartRecording;
+  final VoidCallback onStopRecording;
+
+  @override
+  Widget build(BuildContext context) {
+    final isRecording = recordingState is RecordingActive;
+    final isStarting = recordingState is RecordingStarting;
+    final isRestoring = recordingState is RecordingRestoring;
+
+    return FilledButton.icon(
+      style: isRecording
+          ? FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            )
+          : null,
+      onPressed: isStarting || isRestoring
+          ? null
+          : isRecording
+          ? onStopRecording
+          : onStartRecording,
+      icon: Icon(isRecording ? Icons.stop : Icons.fiber_manual_record),
+      label: Text(
+        isRecording
+            ? 'Stop Recording'
+            : isStarting
+            ? 'Starting Recording...'
+            : 'Start Recording',
+      ),
+    );
+  }
+}
+
 class _RecordingBanner extends StatelessWidget {
   const _RecordingBanner({required this.state});
 
@@ -192,15 +232,6 @@ class _RecordingBanner extends StatelessWidget {
                 '${mode.label} recording ${formatDuration(state.elapsed)}',
                 style: Theme.of(context).textTheme.titleMedium,
               ),
-            ),
-            FilledButton.tonalIcon(
-              onPressed: () {
-                context.read<RecordingBloc>().add(
-                  const StopRecordingRequested(),
-                );
-              },
-              icon: const Icon(Icons.stop),
-              label: const Text('Stop'),
             ),
           ],
         ),

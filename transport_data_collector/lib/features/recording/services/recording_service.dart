@@ -52,7 +52,7 @@ class RecordingService {
     }
 
     await requestNotificationPermission();
-    initForegroundTask();
+    initializeForegroundTask();
 
     final sessionId = const Uuid().v4();
     final startedAtMs = DateTime.now().millisecondsSinceEpoch;
@@ -147,6 +147,10 @@ class RecordingService {
 
   Future<void> requestNotificationPermission() async {
     await Permission.notification.request();
+  }
+
+  void initializeForegroundTask() {
+    initForegroundTask();
   }
 
   Future<void> saveRecordingMetadata({
