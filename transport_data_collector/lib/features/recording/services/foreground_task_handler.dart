@@ -11,6 +11,7 @@ class RecordingTaskHandler extends TaskHandler {
   SensorService? _sensorService;
   StreamSubscription? _sampleSubscription;
   final _buffer = <SamplesCompanion>[];
+  Future<void> _pendingFlush = Future<void>.value();
   String? _sessionId;
   int? _startedAtMs;
 
@@ -50,7 +51,7 @@ class RecordingTaskHandler extends TaskHandler {
 
   @override
   void onRepeatEvent(DateTime timestamp) {
-    unawaited(_flush());
+    _flushInBackground();
     final startedAtMs = _startedAtMs;
     if (startedAtMs != null) {
       final elapsed = Duration(
@@ -97,7 +98,19 @@ class RecordingTaskHandler extends TaskHandler {
     }
   }
 
+  void _flushInBackground() {
+    unawaited(_flush().catchError((Object _) {}));
+  }
+
   Future<void> _flush() async {
+    final flush = _pendingFlush
+        .catchError((Object _) {})
+        .then((_) => _drainBuffer());
+    _pendingFlush = flush;
+    return flush;
+  }
+
+  Future<void> _drainBuffer() async {
     final db = _db;
     if (db == null || _buffer.isEmpty) return;
     final rows = List<SamplesCompanion>.from(_buffer);

@@ -23,6 +23,7 @@ class SessionReviewScreen extends StatefulWidget {
 
 class _SessionReviewScreenState extends State<SessionReviewScreen> {
   late Future<_SessionDetail> _detailFuture;
+  late Stream<List<Sample>> _samplesStream;
   final _trimStartController = TextEditingController();
   final _trimEndController = TextEditingController();
   RangeValues? _trimValues;
@@ -34,7 +35,9 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final db = context.read<AppDatabase>();
     _detailFuture = _loadDetail();
+    _samplesStream = db.sampleDao.watchSamplesForSession(widget.sessionId);
   }
 
   Future<_SessionDetail> _loadDetail() async {
@@ -82,149 +85,156 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
               return const Center(child: CircularProgressIndicator());
             }
             final detail = snapshot.data!;
-            final session = detail.session;
-            final stoppedAtMs = session.stoppedAtMs;
-            final uploadCompletedInState =
-                (uploadState is UploadSuccess &&
-                    uploadState.sessionId == session.id) ||
-                (uploadState is UploadConfirmPending &&
-                    uploadState.sessionId == session.id);
-            final isUploaded =
-                session.uploadedAtMs != null || uploadCompletedInState;
-            final isUploading =
-                _uploadRequested ||
-                (uploadState is UploadInProgress &&
-                    uploadState.sessionId == session.id);
-            final canEdit = stoppedAtMs != null && !isUploaded && !isUploading;
-            final canSubmit =
-                canEdit && _trimStartError == null && _trimEndError == null;
-            final canDelete = canEdit;
-            final maxSeconds = detail.duration.inSeconds.toDouble().clamp(
-              1,
-              double.infinity,
-            );
-            final currentTrim =
-                _trimValues ??
-                RangeValues(
-                  ((session.trimmedStartMs ?? session.startedAtMs) -
-                          session.startedAtMs) /
-                      1000,
-                  ((session.trimmedEndMs ??
-                              stoppedAtMs ??
-                              session.startedAtMs) -
-                          session.startedAtMs) /
-                      1000,
+            return StreamBuilder<List<Sample>>(
+              stream: _samplesStream,
+              initialData: detail.samples,
+              builder: (context, samplesSnapshot) {
+                return _buildDetail(
+                  uploadState,
+                  detail.copyWith(
+                    samples: samplesSnapshot.data ?? detail.samples,
+                  ),
                 );
-            _initializeTrimInputs(currentTrim);
-            return ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                SizedBox(
-                  height: 240,
-                  child: _MagnitudeChart(
-                    spots: detail.chartSpots,
-                    trim: currentTrim,
-                    maxSeconds: maxSeconds.toDouble(),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                RangeSlider(
-                  values: RangeValues(
-                    currentTrim.start.clamp(0, maxSeconds.toDouble()),
-                    currentTrim.end.clamp(0, maxSeconds.toDouble()),
-                  ),
-                  min: 0,
-                  max: maxSeconds.toDouble(),
-                  divisions: max(1, maxSeconds.round()),
-                  labels: RangeLabels(
-                    formatDuration(
-                      Duration(seconds: currentTrim.start.round()),
-                    ),
-                    formatDuration(Duration(seconds: currentTrim.end.round())),
-                  ),
-                  onChanged: !canEdit
-                      ? null
-                      : (values) => _setTrimFromSlider(values),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: _TrimTimeField(
-                        fieldKey: const Key('trim-start-field'),
-                        label: 'Start',
-                        controller: _trimStartController,
-                        enabled: canEdit,
-                        errorText: _trimStartError,
-                        onChanged: (_) => _setTrimFromText(
-                          isStart: true,
-                          maxSeconds: maxSeconds.toDouble(),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _TrimTimeField(
-                        fieldKey: const Key('trim-end-field'),
-                        label: 'End',
-                        controller: _trimEndController,
-                        enabled: canEdit,
-                        errorText: _trimEndError,
-                        onChanged: (_) => _setTrimFromText(
-                          isStart: false,
-                          maxSeconds: maxSeconds.toDouble(),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                _StatsPanel(detail: detail),
-                const SizedBox(height: 20),
-                KeyedSubtree(
-                  key: const Key('confirm-upload-action'),
-                  child: FilledButton.icon(
-                    onPressed: !canSubmit
-                        ? null
-                        : () => _saveTrimAndUpload(detail, currentTrim),
-                    icon: isUploading
-                        ? const SizedBox.square(
-                            dimension: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            session.confirmPending
-                                ? Icons.schedule
-                                : isUploaded
-                                ? Icons.cloud_done
-                                : Icons.cloud_upload,
-                          ),
-                    label: Text(
-                      isUploading
-                          ? 'Uploading...'
-                          : session.confirmPending
-                          ? 'Awaiting Confirmation'
-                          : isUploaded
-                          ? 'Uploaded'
-                          : 'Confirm & Upload',
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: canDelete ? () => _confirmDelete(context) : null,
-                  icon: const Icon(Icons.delete_outline),
-                  label: const Text('Delete'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Theme.of(context).colorScheme.error,
-                  ),
-                ),
-              ],
+              },
             );
           },
         ),
       ),
+    );
+  }
+
+  Widget _buildDetail(UploadState uploadState, _SessionDetail detail) {
+    final session = detail.session;
+    final stoppedAtMs = session.stoppedAtMs;
+    final uploadCompletedInState =
+        (uploadState is UploadSuccess && uploadState.sessionId == session.id) ||
+        (uploadState is UploadConfirmPending &&
+            uploadState.sessionId == session.id);
+    final isUploaded = session.uploadedAtMs != null || uploadCompletedInState;
+    final isUploading =
+        _uploadRequested ||
+        (uploadState is UploadInProgress &&
+            uploadState.sessionId == session.id);
+    final canEdit = stoppedAtMs != null && !isUploaded && !isUploading;
+    final canSubmit =
+        canEdit && _trimStartError == null && _trimEndError == null;
+    final canDelete = canEdit;
+    final maxSeconds = detail.duration.inSeconds.toDouble().clamp(
+      1,
+      double.infinity,
+    );
+    final currentTrim =
+        _trimValues ??
+        RangeValues(
+          ((session.trimmedStartMs ?? session.startedAtMs) -
+                  session.startedAtMs) /
+              1000,
+          ((session.trimmedEndMs ?? stoppedAtMs ?? session.startedAtMs) -
+                  session.startedAtMs) /
+              1000,
+        );
+    _initializeTrimInputs(currentTrim);
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        SizedBox(
+          height: 240,
+          child: _MagnitudeChart(
+            spots: detail.chartSpots,
+            trim: currentTrim,
+            maxSeconds: maxSeconds.toDouble(),
+          ),
+        ),
+        const SizedBox(height: 16),
+        RangeSlider(
+          values: RangeValues(
+            currentTrim.start.clamp(0, maxSeconds.toDouble()),
+            currentTrim.end.clamp(0, maxSeconds.toDouble()),
+          ),
+          min: 0,
+          max: maxSeconds.toDouble(),
+          divisions: max(1, maxSeconds.round()),
+          labels: RangeLabels(
+            formatDuration(Duration(seconds: currentTrim.start.round())),
+            formatDuration(Duration(seconds: currentTrim.end.round())),
+          ),
+          onChanged: !canEdit ? null : (values) => _setTrimFromSlider(values),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: _TrimTimeField(
+                fieldKey: const Key('trim-start-field'),
+                label: 'Start',
+                controller: _trimStartController,
+                enabled: canEdit,
+                errorText: _trimStartError,
+                onChanged: (_) => _setTrimFromText(
+                  isStart: true,
+                  maxSeconds: maxSeconds.toDouble(),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _TrimTimeField(
+                fieldKey: const Key('trim-end-field'),
+                label: 'End',
+                controller: _trimEndController,
+                enabled: canEdit,
+                errorText: _trimEndError,
+                onChanged: (_) => _setTrimFromText(
+                  isStart: false,
+                  maxSeconds: maxSeconds.toDouble(),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        _StatsPanel(detail: detail),
+        const SizedBox(height: 20),
+        KeyedSubtree(
+          key: const Key('confirm-upload-action'),
+          child: FilledButton.icon(
+            onPressed: !canSubmit
+                ? null
+                : () => _saveTrimAndUpload(detail, currentTrim),
+            icon: isUploading
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(
+                    session.confirmPending
+                        ? Icons.schedule
+                        : isUploaded
+                        ? Icons.cloud_done
+                        : Icons.cloud_upload,
+                  ),
+            label: Text(
+              isUploading
+                  ? 'Uploading...'
+                  : session.confirmPending
+                  ? 'Awaiting Confirmation'
+                  : isUploaded
+                  ? 'Uploaded'
+                  : 'Confirm & Upload',
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: canDelete ? () => _confirmDelete(context) : null,
+          icon: const Icon(Icons.delete_outline),
+          label: const Text('Delete'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.error,
+          ),
+        ),
+      ],
     );
   }
 
@@ -499,7 +509,11 @@ class _StatsPanel extends StatelessWidget {
           ),
           _StatRow(label: 'Duration', value: formatDuration(detail.duration)),
           _StatRow(label: 'Trimmed', value: formatDuration(trimmedDuration)),
-          _StatRow(label: 'Samples', value: '${detail.samples.length}'),
+          _StatRow(
+            key: const Key('sample-count-stat'),
+            label: 'Samples',
+            value: '${detail.samples.length}',
+          ),
         ],
       ),
     );
@@ -507,7 +521,7 @@ class _StatsPanel extends StatelessWidget {
 }
 
 class _StatRow extends StatelessWidget {
-  const _StatRow({required this.label, required this.value});
+  const _StatRow({super.key, required this.label, required this.value});
 
   final String label;
   final String value;
@@ -531,6 +545,10 @@ class _SessionDetail {
 
   final Session session;
   final List<Sample> samples;
+
+  _SessionDetail copyWith({List<Sample>? samples}) {
+    return _SessionDetail(session: session, samples: samples ?? this.samples);
+  }
 
   Duration get duration {
     return sessionDuration(

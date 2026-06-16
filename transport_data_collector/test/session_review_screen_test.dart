@@ -23,7 +23,9 @@ void main() {
     database = AppDatabase.forTesting(NativeDatabase.memory());
   });
 
-  tearDown(() => database.close());
+  tearDown(() async {
+    await database.close();
+  });
 
   testWidgets('uploaded sessions cannot be trimmed, uploaded, or deleted', (
     tester,
@@ -57,7 +59,7 @@ void main() {
       matching: find.byType(FilledButton),
     );
     await tester.drag(find.byType(ListView), const Offset(0, -500));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(tester.widget<FilledButton>(uploadedButton.last).onPressed, isNull);
     expect(
       tester
@@ -65,6 +67,7 @@ void main() {
           .onPressed,
       isNull,
     );
+    await _disposeReviewScreen(tester);
   });
 
   testWidgets('time fields and range slider stay synchronized', (tester) async {
@@ -97,6 +100,7 @@ void main() {
 
     expect(tester.widget<TextField>(startField).controller!.text, '00:30');
     expect(tester.widget<TextField>(endField).controller!.text, '01:30');
+    await _disposeReviewScreen(tester);
   });
 
   testWidgets('time fields reject values outside the session', (tester) async {
@@ -117,6 +121,45 @@ void main() {
       tester.widget<RangeSlider>(find.byType(RangeSlider)).values,
       const RangeValues(0, 120),
     );
+    await _disposeReviewScreen(tester);
+  });
+
+  testWidgets('sample chart updates when late samples arrive', (tester) async {
+    await _insertSession(database);
+
+    await _pumpReviewScreen(
+      tester,
+      database: database,
+      inviteCodeStore: inviteCodeStore,
+      uploadService: _CompletingUploadService(),
+    );
+
+    expect(find.text('No samples recorded'), findsOneWidget);
+
+    await database.sampleDao.insertSamples([
+      SamplesCompanion.insert(
+        sessionId: 'session-id',
+        timestampMs: 1500,
+        accelX: 1,
+        accelY: 2,
+        accelZ: 3,
+        gyroX: 0,
+        gyroY: 0,
+        gyroZ: 0,
+      ),
+    ]);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.text('No samples recorded'), findsNothing);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('sample-count-stat')),
+        matching: find.text('1'),
+      ),
+      findsOneWidget,
+    );
+    await _disposeReviewScreen(tester);
   });
 
   testWidgets('upload button shows progress and locks controls immediately', (
@@ -138,7 +181,7 @@ void main() {
       matching: find.byType(FilledButton),
     );
     await tester.drag(find.byType(ListView), const Offset(0, -500));
-    await tester.pumpAndSettle();
+    await tester.pump(const Duration(milliseconds: 300));
     await tester.tap(uploadButton.last);
     await tester.pump();
 
@@ -158,7 +201,9 @@ void main() {
     );
 
     uploadService.complete();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await _disposeReviewScreen(tester);
   });
 }
 
@@ -183,7 +228,16 @@ Future<void> _pumpReviewScreen(
       ),
     ),
   );
-  await tester.pumpAndSettle();
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+    if (find.byType(CircularProgressIndicator).evaluate().isEmpty) break;
+  }
+  expect(find.byType(CircularProgressIndicator), findsNothing);
+}
+
+Future<void> _disposeReviewScreen(WidgetTester tester) async {
+  await tester.pumpWidget(const SizedBox.shrink());
+  await tester.pump(const Duration(milliseconds: 1));
 }
 
 Future<void> _insertSession(

@@ -50,6 +50,25 @@ class SessionDao extends DatabaseAccessor<AppDatabase> with _$SessionDaoMixin {
     );
   }
 
+  Future<int> markStopObserved({required String id, required int stoppedAtMs}) {
+    return customUpdate(
+      '''
+UPDATE sessions
+SET
+  stopped_at_ms = COALESCE(stopped_at_ms, ?),
+  trimmed_end_ms = COALESCE(trimmed_end_ms, stopped_at_ms, ?)
+WHERE id = ?
+''',
+      variables: [
+        Variable<int>(stoppedAtMs),
+        Variable<int>(stoppedAtMs),
+        Variable<String>(id),
+      ],
+      updates: {sessions},
+      updateKind: UpdateKind.update,
+    );
+  }
+
   Future<void> updateTrim({
     required String id,
     required int trimmedStartMs,

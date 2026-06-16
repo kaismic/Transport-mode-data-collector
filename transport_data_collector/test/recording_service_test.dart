@@ -44,6 +44,42 @@ void main() {
   );
 
   test(
+    'stop fallback preserves manifest for foreground finalization',
+    () async {
+      await _insertActiveSession(database);
+      final service = _FakeRecordingService(database);
+
+      await service.stopSession(sessionId: 'session-id');
+      await database.sessionDao.markStopped(
+        id: 'session-id',
+        stoppedAtMs: 2000,
+        sensorManifest: '{"accelerometer":{"available":true}}',
+      );
+
+      final session = await database.sessionDao.getSession('session-id');
+      expect(session?.sensorManifest, '{"accelerometer":{"available":true}}');
+      expect(session?.trimmedEndMs, isNotNull);
+    },
+  );
+
+  test('stop fallback does not overwrite an already stopped session', () async {
+    await _insertActiveSession(database);
+    await database.sessionDao.markStopped(
+      id: 'session-id',
+      stoppedAtMs: 1500,
+      sensorManifest: '{"existing":true}',
+    );
+    final service = _FakeRecordingService(database);
+
+    await service.stopSession(sessionId: 'session-id');
+
+    final session = await database.sessionDao.getSession('session-id');
+    expect(session?.stoppedAtMs, 1500);
+    expect(session?.trimmedEndMs, 1500);
+    expect(session?.sensorManifest, '{"existing":true}');
+  });
+
+  test(
     'does not mark the session stopped while the service is running',
     () async {
       await _insertActiveSession(database);

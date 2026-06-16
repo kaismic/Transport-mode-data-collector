@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:math' as math;
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
@@ -91,16 +94,16 @@ class RecordingService {
       throw Exception('Could not stop foreground service: $reason');
     }
 
-    final session = await _db.sessionDao.getSession(sessionId);
-    if (session != null && session.stoppedAtMs == null) {
-      // The task isolate has a separate Drift connection, so its write does not
-      // invalidate streams owned by the UI connection.
-      await _db.sessionDao.markStopped(
+    // The task isolate has a separate Drift connection, so its write does not
+    // invalidate streams owned by the UI connection. Avoid selecting the row
+    // here because the task isolate can still be releasing its SQLite write
+    // lock after stopService returns.
+    await _retryDatabaseLock(
+      () => _db.sessionDao.markStopObserved(
         id: sessionId,
         stoppedAtMs: DateTime.now().millisecondsSinceEpoch,
-        sensorManifest: session.sensorManifest,
-      );
-    }
+      ),
+    );
     await clearRecordingMetadata();
   }
 
@@ -135,6 +138,34 @@ class RecordingService {
   }
 
   Future<bool> get isRecording => FlutterForegroundTask.isRunningService;
+
+  Future<T> _retryDatabaseLock<T>(Future<T> Function() action) async {
+    Object? lastError;
+    const maxRetries = 5;
+    for (var i = 0; i < maxRetries; i++) {
+      try {
+        return await action();
+      } catch (error) {
+        if (!_isDatabaseLocked(error)) rethrow;
+        lastError = error;
+        await Future<void>.delayed(
+          Duration(milliseconds: (50 * math.pow(2, i)).toInt()),
+        );
+      }
+    }
+    try {
+      return await action();
+    } catch (error) {
+      if (_isDatabaseLocked(error) && lastError != null) throw lastError;
+      rethrow;
+    }
+  }
+
+  bool _isDatabaseLocked(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database is locked') ||
+        message.contains('sqliteexception(5)');
+  }
 }
 
 class ActiveRecordingSession {
