@@ -79,8 +79,11 @@ class RecordingError extends RecordingState {
 }
 
 class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
-  RecordingBloc({required this.recordingService, required this.deviceUuid})
-    : super(const RecordingRestoring()) {
+  RecordingBloc({
+    required this.recordingService,
+    required this.deviceUuid,
+    this.tickInterval = const Duration(seconds: 1),
+  }) : super(const RecordingRestoring()) {
     on<StartRecordingRequested>(_onStartRequested);
     on<StopRecordingRequested>(_onStopRequested);
     on<RestoreRecordingRequested>(_onRestoreRequested);
@@ -90,6 +93,7 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
 
   final RecordingService recordingService;
   final String deviceUuid;
+  final Duration tickInterval;
   Timer? _timer;
 
   Future<void> _onRestoreRequested(
@@ -99,8 +103,13 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
     try {
       final activeSession = await recordingService.restoreActiveSession();
       if (activeSession == null) {
-        _timer?.cancel();
-        emit(const RecordingIdle());
+        final previous = state;
+        if (previous is RecordingActive) {
+          await _finalizeExternallyStoppedSession(previous, emit);
+        } else {
+          _timer?.cancel();
+          emit(const RecordingIdle());
+        }
         return;
       }
 
@@ -181,9 +190,16 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
     }
   }
 
-  void _onTicked(_RecordingTicked event, Emitter<RecordingState> emit) {
+  Future<void> _onTicked(
+    _RecordingTicked event,
+    Emitter<RecordingState> emit,
+  ) async {
     final current = state;
     if (current is! RecordingActive) return;
+    if (!await recordingService.isRecording) {
+      await _finalizeExternallyStoppedSession(current, emit);
+      return;
+    }
     final elapsed = _elapsedSince(current.startedAtMs);
     emit(
       RecordingActive(
@@ -197,10 +213,20 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
 
   void _startTimer() {
     _timer?.cancel();
-    _timer = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) => add(const _RecordingTicked()),
-    );
+    _timer = Timer.periodic(tickInterval, (_) => add(const _RecordingTicked()));
+  }
+
+  Future<void> _finalizeExternallyStoppedSession(
+    RecordingActive active,
+    Emitter<RecordingState> emit,
+  ) async {
+    _timer?.cancel();
+    try {
+      await recordingService.stopSession(sessionId: active.sessionId);
+    } catch (error) {
+      emit(RecordingError('Could not finalize stopped recording: $error'));
+    }
+    emit(const RecordingIdle());
   }
 
   Duration _elapsedSince(int startedAtMs) {

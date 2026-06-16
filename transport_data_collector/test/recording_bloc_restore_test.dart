@@ -99,25 +99,105 @@ void main() {
       await bloc.close();
     },
   );
+
+  test(
+    'finalizes active recording when the foreground service stops externally',
+    () async {
+      final service = _FakeRecordingService(
+        database,
+        activeSession: ActiveRecordingSession(
+          sessionId: 'session-id',
+          vehicleType: 'train',
+          startedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      final bloc = RecordingBloc(
+        recordingService: service,
+        deviceUuid: 'device-id',
+        tickInterval: const Duration(milliseconds: 10),
+      );
+
+      await bloc.stream
+          .where((state) => state is RecordingActive)
+          .cast<RecordingActive>()
+          .first;
+      service.serviceRunning = false;
+
+      expect(
+        await bloc.stream
+            .where((state) => state is RecordingIdle)
+            .cast<RecordingIdle>()
+            .first,
+        isA<RecordingIdle>(),
+      );
+      expect(service.stoppedSessionId, 'session-id');
+      await bloc.close();
+    },
+  );
+
+  test(
+    'restore finalizes stale active state after external notification stop',
+    () async {
+      final service = _FakeRecordingService(
+        database,
+        activeSession: ActiveRecordingSession(
+          sessionId: 'session-id',
+          vehicleType: 'train',
+          startedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+      final bloc = RecordingBloc(
+        recordingService: service,
+        deviceUuid: 'device-id',
+        tickInterval: const Duration(days: 1),
+      );
+
+      await bloc.stream
+          .where((state) => state is RecordingActive)
+          .cast<RecordingActive>()
+          .first;
+      service.serviceRunning = false;
+      bloc.add(const RestoreRecordingRequested());
+
+      expect(
+        await bloc.stream
+            .where((state) => state is RecordingIdle)
+            .cast<RecordingIdle>()
+            .first,
+        isA<RecordingIdle>(),
+      );
+      expect(service.stoppedSessionId, 'session-id');
+      await bloc.close();
+    },
+  );
 }
 
 class _FakeRecordingService extends RecordingService {
   _FakeRecordingService(
     super.database, {
-    this.activeSession,
+    ActiveRecordingSession? activeSession,
     this.stopCompleter,
-  });
+    bool? serviceRunning,
+  }) : activeSession = activeSession,
+       serviceRunning = serviceRunning ?? activeSession != null;
 
   final ActiveRecordingSession? activeSession;
   final Completer<void>? stopCompleter;
+  bool serviceRunning;
   String? stoppedSessionId;
 
   @override
-  Future<ActiveRecordingSession?> restoreActiveSession() async => activeSession;
+  Future<ActiveRecordingSession?> restoreActiveSession() async {
+    return serviceRunning ? activeSession : null;
+  }
 
   @override
   Future<void> stopSession({required String sessionId}) {
     stoppedSessionId = sessionId;
-    return stopCompleter?.future ?? Future<void>.value();
+    final future = stopCompleter?.future ?? Future<void>.value();
+    return future.whenComplete(() => serviceRunning = false);
   }
+
+  @override
+  Future<bool> get isRecording async => serviceRunning;
 }
