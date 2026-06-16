@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:drift/native.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:transport_data_collector/core/database/app_database.dart';
 import 'package:transport_data_collector/features/recording/services/recording_service.dart';
+import 'package:transport_data_collector/features/recording/services/recording_task_messages.dart';
 
 void main() {
   late AppDatabase database;
@@ -12,6 +15,48 @@ void main() {
   });
 
   tearDown(() => database.close());
+
+  test('start waits until the foreground task reports a sample', () async {
+    final service = _FakeRecordingService(database);
+
+    final startFuture = service.startSession(
+      deviceUuid: 'device-id',
+      vehicleType: 'car',
+    );
+    await Future<void>.delayed(Duration.zero);
+
+    expect(service.startedForegroundService, isTrue);
+    expect(await _isCompleted(startFuture), isFalse);
+
+    final session = (await database.sessionDao.getAllSessions()).single;
+    service.reportReady(session.id);
+
+    expect(await startFuture, session.id);
+    expect(service.removedTaskDataCallback, isTrue);
+  });
+
+  test('start cleans up the session when no samples arrive', () async {
+    final service = _FakeRecordingService(
+      database,
+      recordingReadyTimeout: const Duration(milliseconds: 10),
+    );
+
+    await expectLater(
+      service.startSession(deviceUuid: 'device-id', vehicleType: 'car'),
+      throwsA(
+        predicate(
+          (Object error) => error.toString().contains(
+            'Could not start recording: no sensor samples received',
+          ),
+        ),
+      ),
+    );
+
+    expect(service.stoppedForegroundService, isTrue);
+    expect(service.clearedRecordingMetadata, isTrue);
+    expect(await database.sessionDao.getAllSessions(), isEmpty);
+    expect(service.removedTaskDataCallback, isTrue);
+  });
 
   test(
     'marks the session stopped after the foreground service stops',
@@ -96,6 +141,15 @@ void main() {
   );
 }
 
+Future<bool> _isCompleted<T>(Future<T> future) async {
+  var completed = false;
+  unawaited(
+    future.then((_) => completed = true, onError: (_) => completed = true),
+  );
+  await Future<void>.delayed(Duration.zero);
+  return completed;
+}
+
 Future<void> _insertActiveSession(AppDatabase database) {
   return database.sessionDao.insertSession(
     SessionsCompanion.insert(
@@ -110,19 +164,70 @@ Future<void> _insertActiveSession(AppDatabase database) {
 
 class _FakeRecordingService extends RecordingService {
   _FakeRecordingService(
-    super.database, {
+    this.database, {
     this.stillRunning = false,
     this.stopResult = const ServiceRequestSuccess(),
-  });
+    Duration recordingReadyTimeout = const Duration(seconds: 10),
+  }) : super(database, recordingReadyTimeout: recordingReadyTimeout);
 
+  final AppDatabase database;
   final bool stillRunning;
   final ServiceRequestResult stopResult;
+  void Function(Object data)? _taskDataCallback;
+  var startedForegroundService = false;
+  var stoppedForegroundService = false;
+  var clearedRecordingMetadata = false;
+  var removedTaskDataCallback = false;
+
+  void reportReady(String sessionId) {
+    _taskDataCallback?.call(recordingReadyTaskMessage(sessionId));
+  }
 
   @override
-  Future<ServiceRequestResult> stopForegroundService() async => stopResult;
+  Future<ServiceRequestResult> startForegroundService({
+    required String notificationTitle,
+    required String notificationText,
+    required List<NotificationButton> notificationButtons,
+  }) async {
+    startedForegroundService = true;
+    return const ServiceRequestSuccess();
+  }
 
   @override
-  Future<void> clearRecordingMetadata() async {}
+  Future<ServiceRequestResult> stopForegroundService() async {
+    stoppedForegroundService = true;
+    return stopResult;
+  }
+
+  @override
+  Future<void> requestNotificationPermission() async {}
+
+  @override
+  void initializeForegroundTask() {}
+
+  @override
+  Future<void> saveRecordingMetadata({
+    required String sessionId,
+    required int startedAtMs,
+  }) async {}
+
+  @override
+  Future<void> clearRecordingMetadata() async {
+    clearedRecordingMetadata = true;
+  }
+
+  @override
+  void addTaskDataCallback(void Function(Object data) callback) {
+    _taskDataCallback = callback;
+  }
+
+  @override
+  void removeTaskDataCallback(void Function(Object data) callback) {
+    if (_taskDataCallback == callback) {
+      _taskDataCallback = null;
+    }
+    removedTaskDataCallback = true;
+  }
 
   @override
   Future<bool> get isRecording async => stillRunning;

@@ -9,6 +9,7 @@ import '../../../core/database/app_database.dart';
 import '../../../core/transport_modes.dart';
 import '../models/sensor_manifest.dart';
 import 'foreground_task_handler.dart';
+import 'recording_task_messages.dart';
 
 @pragma('vm:entry-point')
 void startRecordingCallback() {
@@ -16,9 +17,13 @@ void startRecordingCallback() {
 }
 
 class RecordingService {
-  RecordingService(this._db);
+  RecordingService(
+    this._db, {
+    this.recordingReadyTimeout = const Duration(seconds: 10),
+  });
 
   final AppDatabase _db;
+  final Duration recordingReadyTimeout;
 
   static void initForegroundTask() {
     FlutterForegroundTask.init(
@@ -26,7 +31,7 @@ class RecordingService {
         channelId: 'transport_recording',
         channelName: 'Transport recording',
         channelDescription: 'Shows active transport data recording sessions.',
-        channelImportance: NotificationChannelImportance.LOW,
+        channelImportance: NotificationChannelImportance.HIGH,
         priority: NotificationPriority.LOW,
         onlyAlertOnce: true,
       ),
@@ -46,7 +51,7 @@ class RecordingService {
       throw ArgumentError.value(vehicleType, 'vehicleType', 'Unsupported type');
     }
 
-    await Permission.notification.request();
+    await requestNotificationPermission();
     initForegroundTask();
 
     final sessionId = const Uuid().v4();
@@ -61,27 +66,42 @@ class RecordingService {
       ),
     );
 
-    await FlutterForegroundTask.saveData(key: 'session_id', value: sessionId);
-    await FlutterForegroundTask.saveData(
-      key: 'started_at_ms',
-      value: startedAtMs,
-    );
+    await saveRecordingMetadata(sessionId: sessionId, startedAtMs: startedAtMs);
 
     final mode = transportModeFor(vehicleType);
-    final result = await FlutterForegroundTask.startService(
-      serviceId: 4101,
-      notificationTitle: 'Recording ${mode.label}',
-      notificationText: 'Elapsed 00:00',
-      notificationButtons: [const NotificationButton(id: 'stop', text: 'Stop')],
-      callback: startRecordingCallback,
-    );
-    if (result is ServiceRequestFailure) {
-      await FlutterForegroundTask.removeData(key: 'session_id');
-      await FlutterForegroundTask.removeData(key: 'started_at_ms');
-      await _db.sessionDao.deleteSessionWithSamples(sessionId);
-      throw Exception('Could not start foreground service: ${result.error}');
+    final ready = Completer<void>();
+    void onTaskData(Object data) {
+      if (isRecordingReadyTaskMessage(data, sessionId) && !ready.isCompleted) {
+        ready.complete();
+      }
     }
-    return sessionId;
+
+    addTaskDataCallback(onTaskData);
+    try {
+      final result = await startForegroundService(
+        notificationTitle: 'Recording ${mode.label}',
+        notificationText: 'Elapsed 00:00',
+        notificationButtons: [
+          const NotificationButton(id: 'stop', text: 'Stop'),
+        ],
+      );
+      if (result is ServiceRequestFailure) {
+        await _cleanupFailedStart(sessionId);
+        throw Exception('Could not start foreground service: ${result.error}');
+      }
+
+      await ready.future.timeout(recordingReadyTimeout);
+      return sessionId;
+    } on TimeoutException {
+      await stopForegroundService();
+      await _cleanupFailedStart(sessionId);
+      throw Exception(
+        'Could not start recording: no sensor samples received within '
+        '${_formatReadyTimeout()}.',
+      );
+    } finally {
+      removeTaskDataCallback(onTaskData);
+    }
   }
 
   Future<void> stopSession({required String sessionId}) async {
@@ -111,9 +131,46 @@ class RecordingService {
     return FlutterForegroundTask.stopService();
   }
 
+  Future<ServiceRequestResult> startForegroundService({
+    required String notificationTitle,
+    required String notificationText,
+    required List<NotificationButton> notificationButtons,
+  }) {
+    return FlutterForegroundTask.startService(
+      serviceId: 4101,
+      notificationTitle: notificationTitle,
+      notificationText: notificationText,
+      notificationButtons: notificationButtons,
+      callback: startRecordingCallback,
+    );
+  }
+
+  Future<void> requestNotificationPermission() async {
+    await Permission.notification.request();
+  }
+
+  Future<void> saveRecordingMetadata({
+    required String sessionId,
+    required int startedAtMs,
+  }) async {
+    await FlutterForegroundTask.saveData(key: 'session_id', value: sessionId);
+    await FlutterForegroundTask.saveData(
+      key: 'started_at_ms',
+      value: startedAtMs,
+    );
+  }
+
   Future<void> clearRecordingMetadata() async {
     await FlutterForegroundTask.removeData(key: 'session_id');
     await FlutterForegroundTask.removeData(key: 'started_at_ms');
+  }
+
+  void addTaskDataCallback(void Function(Object data) callback) {
+    FlutterForegroundTask.addTaskDataCallback(callback);
+  }
+
+  void removeTaskDataCallback(void Function(Object data) callback) {
+    FlutterForegroundTask.removeTaskDataCallback(callback);
   }
 
   Future<ActiveRecordingSession?> restoreActiveSession() async {
@@ -138,6 +195,20 @@ class RecordingService {
   }
 
   Future<bool> get isRecording => FlutterForegroundTask.isRunningService;
+
+  String _formatReadyTimeout() {
+    if (recordingReadyTimeout.inSeconds == 0) {
+      return '${recordingReadyTimeout.inMilliseconds} milliseconds';
+    }
+    return '${recordingReadyTimeout.inSeconds} seconds';
+  }
+
+  Future<void> _cleanupFailedStart(String sessionId) async {
+    await clearRecordingMetadata();
+    await _retryDatabaseLock(
+      () => _db.sessionDao.deleteSessionWithSamples(sessionId),
+    );
+  }
 
   Future<T> _retryDatabaseLock<T>(Future<T> Function() action) async {
     Object? lastError;

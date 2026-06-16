@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 
 import '../../../core/database/app_database.dart';
 import '../services/sensor_service.dart';
+import 'recording_task_messages.dart';
 
 class RecordingTaskHandler extends TaskHandler {
   AppDatabase? _db;
@@ -14,6 +16,7 @@ class RecordingTaskHandler extends TaskHandler {
   Future<void> _pendingFlush = Future<void>.value();
   String? _sessionId;
   int? _startedAtMs;
+  var _reportedReady = false;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -46,6 +49,13 @@ class RecordingTaskHandler extends TaskHandler {
           pressure: Value(sample.pressure),
         ),
       );
+      if (!_reportedReady) {
+        _reportedReady = true;
+        FlutterForegroundTask.sendDataToMain(
+          recordingReadyTaskMessage(sessionId),
+        );
+        _flushInBackground();
+      }
     });
   }
 
@@ -114,8 +124,36 @@ class RecordingTaskHandler extends TaskHandler {
     final db = _db;
     if (db == null || _buffer.isEmpty) return;
     final rows = List<SamplesCompanion>.from(_buffer);
-    _buffer.clear();
-    await db.sampleDao.insertSamples(rows);
+    await _retryDatabaseLock(() => db.sampleDao.insertSamples(rows));
+    _buffer.removeRange(0, rows.length);
+  }
+
+  Future<T> _retryDatabaseLock<T>(Future<T> Function() action) async {
+    Object? lastError;
+    const maxRetries = 5;
+    for (var i = 0; i < maxRetries; i++) {
+      try {
+        return await action();
+      } catch (error) {
+        if (!_isDatabaseLocked(error)) rethrow;
+        lastError = error;
+        await Future<void>.delayed(
+          Duration(milliseconds: (50 * math.pow(2, i)).toInt()),
+        );
+      }
+    }
+    try {
+      return await action();
+    } catch (error) {
+      if (_isDatabaseLocked(error) && lastError != null) throw lastError;
+      rethrow;
+    }
+  }
+
+  bool _isDatabaseLocked(Object error) {
+    final message = error.toString().toLowerCase();
+    return message.contains('database is locked') ||
+        message.contains('sqliteexception(5)');
   }
 
   String _formatElapsed(Duration elapsed) {
