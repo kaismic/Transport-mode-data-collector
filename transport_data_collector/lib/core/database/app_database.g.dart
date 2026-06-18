@@ -39,6 +39,18 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _phonePositionMeta = const VerificationMeta(
+    'phonePosition',
+  );
+  @override
+  late final GeneratedColumn<String> phonePosition = GeneratedColumn<String>(
+    'phone_position',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+    defaultValue: const Constant('other'),
+  );
   static const VerificationMeta _startedAtMsMeta = const VerificationMeta(
     'startedAtMs',
   );
@@ -125,6 +137,7 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
     id,
     deviceUuid,
     vehicleType,
+    phonePosition,
     startedAtMs,
     stoppedAtMs,
     trimmedStartMs,
@@ -168,6 +181,15 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
       );
     } else if (isInserting) {
       context.missing(_vehicleTypeMeta);
+    }
+    if (data.containsKey('phone_position')) {
+      context.handle(
+        _phonePositionMeta,
+        phonePosition.isAcceptableOrUnknown(
+          data['phone_position']!,
+          _phonePositionMeta,
+        ),
+      );
     }
     if (data.containsKey('started_at_ms')) {
       context.handle(
@@ -257,6 +279,10 @@ class $SessionsTable extends Sessions with TableInfo<$SessionsTable, Session> {
         DriftSqlType.string,
         data['${effectivePrefix}vehicle_type'],
       )!,
+      phonePosition: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}phone_position'],
+      )!,
       startedAtMs: attachedDatabase.typeMapping.read(
         DriftSqlType.int,
         data['${effectivePrefix}started_at_ms'],
@@ -298,6 +324,7 @@ class Session extends DataClass implements Insertable<Session> {
   final String id;
   final String deviceUuid;
   final String vehicleType;
+  final String phonePosition;
   final int startedAtMs;
   final int? stoppedAtMs;
   final int? trimmedStartMs;
@@ -309,6 +336,7 @@ class Session extends DataClass implements Insertable<Session> {
     required this.id,
     required this.deviceUuid,
     required this.vehicleType,
+    required this.phonePosition,
     required this.startedAtMs,
     this.stoppedAtMs,
     this.trimmedStartMs,
@@ -323,6 +351,7 @@ class Session extends DataClass implements Insertable<Session> {
     map['id'] = Variable<String>(id);
     map['device_uuid'] = Variable<String>(deviceUuid);
     map['vehicle_type'] = Variable<String>(vehicleType);
+    map['phone_position'] = Variable<String>(phonePosition);
     map['started_at_ms'] = Variable<int>(startedAtMs);
     if (!nullToAbsent || stoppedAtMs != null) {
       map['stopped_at_ms'] = Variable<int>(stoppedAtMs);
@@ -346,6 +375,7 @@ class Session extends DataClass implements Insertable<Session> {
       id: Value(id),
       deviceUuid: Value(deviceUuid),
       vehicleType: Value(vehicleType),
+      phonePosition: Value(phonePosition),
       startedAtMs: Value(startedAtMs),
       stoppedAtMs: stoppedAtMs == null && nullToAbsent
           ? const Value.absent()
@@ -373,6 +403,7 @@ class Session extends DataClass implements Insertable<Session> {
       id: serializer.fromJson<String>(json['id']),
       deviceUuid: serializer.fromJson<String>(json['deviceUuid']),
       vehicleType: serializer.fromJson<String>(json['vehicleType']),
+      phonePosition: serializer.fromJson<String>(json['phonePosition']),
       startedAtMs: serializer.fromJson<int>(json['startedAtMs']),
       stoppedAtMs: serializer.fromJson<int?>(json['stoppedAtMs']),
       trimmedStartMs: serializer.fromJson<int?>(json['trimmedStartMs']),
@@ -389,6 +420,7 @@ class Session extends DataClass implements Insertable<Session> {
       'id': serializer.toJson<String>(id),
       'deviceUuid': serializer.toJson<String>(deviceUuid),
       'vehicleType': serializer.toJson<String>(vehicleType),
+      'phonePosition': serializer.toJson<String>(phonePosition),
       'startedAtMs': serializer.toJson<int>(startedAtMs),
       'stoppedAtMs': serializer.toJson<int?>(stoppedAtMs),
       'trimmedStartMs': serializer.toJson<int?>(trimmedStartMs),
@@ -403,6 +435,7 @@ class Session extends DataClass implements Insertable<Session> {
     String? id,
     String? deviceUuid,
     String? vehicleType,
+    String? phonePosition,
     int? startedAtMs,
     Value<int?> stoppedAtMs = const Value.absent(),
     Value<int?> trimmedStartMs = const Value.absent(),
@@ -414,6 +447,7 @@ class Session extends DataClass implements Insertable<Session> {
     id: id ?? this.id,
     deviceUuid: deviceUuid ?? this.deviceUuid,
     vehicleType: vehicleType ?? this.vehicleType,
+    phonePosition: phonePosition ?? this.phonePosition,
     startedAtMs: startedAtMs ?? this.startedAtMs,
     stoppedAtMs: stoppedAtMs.present ? stoppedAtMs.value : this.stoppedAtMs,
     trimmedStartMs: trimmedStartMs.present
@@ -433,6 +467,9 @@ class Session extends DataClass implements Insertable<Session> {
       vehicleType: data.vehicleType.present
           ? data.vehicleType.value
           : this.vehicleType,
+      phonePosition: data.phonePosition.present
+          ? data.phonePosition.value
+          : this.phonePosition,
       startedAtMs: data.startedAtMs.present
           ? data.startedAtMs.value
           : this.startedAtMs,
@@ -463,6 +500,7 @@ class Session extends DataClass implements Insertable<Session> {
           ..write('id: $id, ')
           ..write('deviceUuid: $deviceUuid, ')
           ..write('vehicleType: $vehicleType, ')
+          ..write('phonePosition: $phonePosition, ')
           ..write('startedAtMs: $startedAtMs, ')
           ..write('stoppedAtMs: $stoppedAtMs, ')
           ..write('trimmedStartMs: $trimmedStartMs, ')
@@ -479,6 +517,7 @@ class Session extends DataClass implements Insertable<Session> {
     id,
     deviceUuid,
     vehicleType,
+    phonePosition,
     startedAtMs,
     stoppedAtMs,
     trimmedStartMs,
@@ -494,6 +533,7 @@ class Session extends DataClass implements Insertable<Session> {
           other.id == this.id &&
           other.deviceUuid == this.deviceUuid &&
           other.vehicleType == this.vehicleType &&
+          other.phonePosition == this.phonePosition &&
           other.startedAtMs == this.startedAtMs &&
           other.stoppedAtMs == this.stoppedAtMs &&
           other.trimmedStartMs == this.trimmedStartMs &&
@@ -507,6 +547,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
   final Value<String> id;
   final Value<String> deviceUuid;
   final Value<String> vehicleType;
+  final Value<String> phonePosition;
   final Value<int> startedAtMs;
   final Value<int?> stoppedAtMs;
   final Value<int?> trimmedStartMs;
@@ -519,6 +560,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     this.id = const Value.absent(),
     this.deviceUuid = const Value.absent(),
     this.vehicleType = const Value.absent(),
+    this.phonePosition = const Value.absent(),
     this.startedAtMs = const Value.absent(),
     this.stoppedAtMs = const Value.absent(),
     this.trimmedStartMs = const Value.absent(),
@@ -532,6 +574,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     required String id,
     required String deviceUuid,
     required String vehicleType,
+    this.phonePosition = const Value.absent(),
     required int startedAtMs,
     this.stoppedAtMs = const Value.absent(),
     this.trimmedStartMs = const Value.absent(),
@@ -549,6 +592,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Expression<String>? id,
     Expression<String>? deviceUuid,
     Expression<String>? vehicleType,
+    Expression<String>? phonePosition,
     Expression<int>? startedAtMs,
     Expression<int>? stoppedAtMs,
     Expression<int>? trimmedStartMs,
@@ -562,6 +606,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       if (id != null) 'id': id,
       if (deviceUuid != null) 'device_uuid': deviceUuid,
       if (vehicleType != null) 'vehicle_type': vehicleType,
+      if (phonePosition != null) 'phone_position': phonePosition,
       if (startedAtMs != null) 'started_at_ms': startedAtMs,
       if (stoppedAtMs != null) 'stopped_at_ms': stoppedAtMs,
       if (trimmedStartMs != null) 'trimmed_start_ms': trimmedStartMs,
@@ -577,6 +622,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     Value<String>? id,
     Value<String>? deviceUuid,
     Value<String>? vehicleType,
+    Value<String>? phonePosition,
     Value<int>? startedAtMs,
     Value<int?>? stoppedAtMs,
     Value<int?>? trimmedStartMs,
@@ -590,6 +636,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
       id: id ?? this.id,
       deviceUuid: deviceUuid ?? this.deviceUuid,
       vehicleType: vehicleType ?? this.vehicleType,
+      phonePosition: phonePosition ?? this.phonePosition,
       startedAtMs: startedAtMs ?? this.startedAtMs,
       stoppedAtMs: stoppedAtMs ?? this.stoppedAtMs,
       trimmedStartMs: trimmedStartMs ?? this.trimmedStartMs,
@@ -612,6 +659,9 @@ class SessionsCompanion extends UpdateCompanion<Session> {
     }
     if (vehicleType.present) {
       map['vehicle_type'] = Variable<String>(vehicleType.value);
+    }
+    if (phonePosition.present) {
+      map['phone_position'] = Variable<String>(phonePosition.value);
     }
     if (startedAtMs.present) {
       map['started_at_ms'] = Variable<int>(startedAtMs.value);
@@ -646,6 +696,7 @@ class SessionsCompanion extends UpdateCompanion<Session> {
           ..write('id: $id, ')
           ..write('deviceUuid: $deviceUuid, ')
           ..write('vehicleType: $vehicleType, ')
+          ..write('phonePosition: $phonePosition, ')
           ..write('startedAtMs: $startedAtMs, ')
           ..write('stoppedAtMs: $stoppedAtMs, ')
           ..write('trimmedStartMs: $trimmedStartMs, ')
@@ -1404,6 +1455,7 @@ typedef $$SessionsTableCreateCompanionBuilder =
       required String id,
       required String deviceUuid,
       required String vehicleType,
+      Value<String> phonePosition,
       required int startedAtMs,
       Value<int?> stoppedAtMs,
       Value<int?> trimmedStartMs,
@@ -1418,6 +1470,7 @@ typedef $$SessionsTableUpdateCompanionBuilder =
       Value<String> id,
       Value<String> deviceUuid,
       Value<String> vehicleType,
+      Value<String> phonePosition,
       Value<int> startedAtMs,
       Value<int?> stoppedAtMs,
       Value<int?> trimmedStartMs,
@@ -1449,6 +1502,11 @@ class $$SessionsTableFilterComposer
 
   ColumnFilters<String> get vehicleType => $composableBuilder(
     column: $table.vehicleType,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get phonePosition => $composableBuilder(
+    column: $table.phonePosition,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -1512,6 +1570,11 @@ class $$SessionsTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get phonePosition => $composableBuilder(
+    column: $table.phonePosition,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<int> get startedAtMs => $composableBuilder(
     column: $table.startedAtMs,
     builder: (column) => ColumnOrderings(column),
@@ -1567,6 +1630,11 @@ class $$SessionsTableAnnotationComposer
 
   GeneratedColumn<String> get vehicleType => $composableBuilder(
     column: $table.vehicleType,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get phonePosition => $composableBuilder(
+    column: $table.phonePosition,
     builder: (column) => column,
   );
 
@@ -1637,6 +1705,7 @@ class $$SessionsTableTableManager
                 Value<String> id = const Value.absent(),
                 Value<String> deviceUuid = const Value.absent(),
                 Value<String> vehicleType = const Value.absent(),
+                Value<String> phonePosition = const Value.absent(),
                 Value<int> startedAtMs = const Value.absent(),
                 Value<int?> stoppedAtMs = const Value.absent(),
                 Value<int?> trimmedStartMs = const Value.absent(),
@@ -1649,6 +1718,7 @@ class $$SessionsTableTableManager
                 id: id,
                 deviceUuid: deviceUuid,
                 vehicleType: vehicleType,
+                phonePosition: phonePosition,
                 startedAtMs: startedAtMs,
                 stoppedAtMs: stoppedAtMs,
                 trimmedStartMs: trimmedStartMs,
@@ -1663,6 +1733,7 @@ class $$SessionsTableTableManager
                 required String id,
                 required String deviceUuid,
                 required String vehicleType,
+                Value<String> phonePosition = const Value.absent(),
                 required int startedAtMs,
                 Value<int?> stoppedAtMs = const Value.absent(),
                 Value<int?> trimmedStartMs = const Value.absent(),
@@ -1675,6 +1746,7 @@ class $$SessionsTableTableManager
                 id: id,
                 deviceUuid: deviceUuid,
                 vehicleType: vehicleType,
+                phonePosition: phonePosition,
                 startedAtMs: startedAtMs,
                 stoppedAtMs: stoppedAtMs,
                 trimmedStartMs: trimmedStartMs,

@@ -86,6 +86,7 @@ class UploadService {
           'session_id': payload.sessionId,
           'device_uuid': payload.deviceUuid,
           'vehicle_type': payload.vehicleType,
+          'phone_position': payload.phonePosition,
           'started_at_ms': payload.startedAtMs,
           'stopped_at_ms': payload.stoppedAtMs,
           'trimmed_start_ms': payload.trimmedStartMs,

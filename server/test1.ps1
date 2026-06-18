@@ -5,6 +5,7 @@ $body = @{
   session_id = "11111111-1111-4111-8111-111111111113"
   device_uuid = "22222222-2222-4222-8222-222222222222"
   vehicle_type = "car"
+  phone_position = "pocket"
   started_at_ms = 1710000000000
   stopped_at_ms = 1710000060000
   trimmed_start_ms = 1710000000000
@@ -30,6 +31,7 @@ $response
 $payload = @{
   session_id = "11111111-1111-4111-8111-111111111111"
   vehicle_type = "car"
+  phone_position = "pocket"
   samples = @(
     @{
       ts = 1710000000000

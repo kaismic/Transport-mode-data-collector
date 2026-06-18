@@ -13,12 +13,16 @@ sealed class RecordingEvent extends Equatable {
 }
 
 class StartRecordingRequested extends RecordingEvent {
-  const StartRecordingRequested(this.vehicleType);
+  const StartRecordingRequested(
+    this.vehicleType, {
+    required this.phonePosition,
+  });
 
   final String vehicleType;
+  final String phonePosition;
 
   @override
-  List<Object?> get props => [vehicleType];
+  List<Object?> get props => [vehicleType, phonePosition];
 }
 
 class StopRecordingRequested extends RecordingEvent {
@@ -138,6 +142,7 @@ class RecordingBloc extends Bloc<RecordingEvent, RecordingState> {
       final sessionId = await recordingService.startSession(
         deviceUuid: deviceUuid,
         vehicleType: event.vehicleType,
+        phonePosition: event.phonePosition,
       );
       final startedAtMs = DateTime.now().millisecondsSinceEpoch;
       _startTimer();

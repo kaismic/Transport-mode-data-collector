@@ -16,12 +16,28 @@ void main() {
 
   tearDown(() => database.close());
 
+  test('start rejects unsupported phone positions', () async {
+    final service = _FakeRecordingService(database);
+
+    await expectLater(
+      service.startSession(
+        deviceUuid: 'device-id',
+        vehicleType: 'car',
+        phonePosition: 'dashboard',
+      ),
+      throwsArgumentError,
+    );
+
+    expect(await database.sessionDao.getAllSessions(), isEmpty);
+  });
+
   test('start waits until the foreground task reports a sample', () async {
     final service = _FakeRecordingService(database);
 
     final startFuture = service.startSession(
       deviceUuid: 'device-id',
       vehicleType: 'car',
+      phonePosition: 'pocket',
     );
     await Future<void>.delayed(Duration.zero);
 
@@ -29,6 +45,7 @@ void main() {
     expect(await _isCompleted(startFuture), isFalse);
 
     final session = (await database.sessionDao.getAllSessions()).single;
+    expect(session.phonePosition, 'pocket');
     service.reportReady(session.id);
 
     expect(await startFuture, session.id);
@@ -42,7 +59,11 @@ void main() {
     );
 
     await expectLater(
-      service.startSession(deviceUuid: 'device-id', vehicleType: 'car'),
+      service.startSession(
+        deviceUuid: 'device-id',
+        vehicleType: 'car',
+        phonePosition: 'hand',
+      ),
       throwsA(
         predicate(
           (Object error) => error.toString().contains(

@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/invite_code_store.dart';
+import '../../../core/phone_positions.dart';
 import '../../../core/time_format.dart';
 import '../../../core/transport_modes.dart';
 import '../../recording/bloc/recording_bloc.dart';
@@ -126,8 +127,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
   }
 
-  void _showVehicleSheet(BuildContext context) {
-    showModalBottomSheet<void>(
+  Future<void> _showVehicleSheet(BuildContext context) async {
+    final vehicleType = await showModalBottomSheet<String>(
       context: context,
       showDragHandle: true,
       builder: (sheetContext) {
@@ -146,10 +147,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               final mode = transportModes[index];
               return FilledButton.tonal(
                 onPressed: () {
-                  Navigator.of(sheetContext).pop();
-                  context.read<RecordingBloc>().add(
-                    StartRecordingRequested(mode.id),
-                  );
+                  Navigator.of(sheetContext).pop(mode.id);
                 },
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -162,6 +160,64 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               );
             },
           ),
+        );
+      },
+    );
+    if (vehicleType == null || !context.mounted) return;
+
+    final phonePosition = await showModalBottomSheet<String>(
+      context: context,
+      showDragHandle: true,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Where is your phone?',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 16),
+                PhonePositionPicker(
+                  onSelected: (position) {
+                    Navigator.of(sheetContext).pop(position);
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    if (phonePosition == null || !context.mounted) return;
+
+    context.read<RecordingBloc>().add(
+      StartRecordingRequested(vehicleType, phonePosition: phonePosition),
+    );
+  }
+}
+
+class PhonePositionPicker extends StatelessWidget {
+  const PhonePositionPicker({super.key, required this.onSelected});
+
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: phonePositions.length,
+      separatorBuilder: (context, index) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final position = phonePositions[index];
+        return ListTile(
+          key: Key('phone-position-${position.id}'),
+          onTap: () => onSelected(position.id),
+          title: Text(position.label),
         );
       },
     );

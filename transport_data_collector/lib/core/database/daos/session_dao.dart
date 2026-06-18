@@ -82,6 +82,15 @@ WHERE id = ?
     );
   }
 
+  Future<void> updatePhonePosition({
+    required String id,
+    required String phonePosition,
+  }) {
+    return (update(sessions)..where((t) => t.id.equals(id))).write(
+      SessionsCompanion(phonePosition: Value(phonePosition)),
+    );
+  }
+
   Future<void> markUploaded({
     required String id,
     required int uploadedAtMs,

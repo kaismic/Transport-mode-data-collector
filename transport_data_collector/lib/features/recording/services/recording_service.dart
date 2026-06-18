@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:drift/drift.dart' show Value;
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/phone_positions.dart';
 import '../../../core/transport_modes.dart';
 import '../models/sensor_manifest.dart';
 import 'foreground_task_handler.dart';
@@ -46,9 +48,17 @@ class RecordingService {
   Future<String> startSession({
     required String deviceUuid,
     required String vehicleType,
+    required String phonePosition,
   }) async {
     if (!allowedVehicleTypes.contains(vehicleType)) {
       throw ArgumentError.value(vehicleType, 'vehicleType', 'Unsupported type');
+    }
+    if (!allowedPhonePositions.contains(phonePosition)) {
+      throw ArgumentError.value(
+        phonePosition,
+        'phonePosition',
+        'Unsupported position',
+      );
     }
 
     await requestNotificationPermission();
@@ -61,6 +71,7 @@ class RecordingService {
         id: sessionId,
         deviceUuid: deviceUuid,
         vehicleType: vehicleType,
+        phonePosition: Value(phonePosition),
         startedAtMs: startedAtMs,
         sensorManifest: SensorManifest.empty().toJson(),
       ),

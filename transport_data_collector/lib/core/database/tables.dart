@@ -4,6 +4,7 @@ class Sessions extends Table {
   TextColumn get id => text()();
   TextColumn get deviceUuid => text()();
   TextColumn get vehicleType => text()();
+  TextColumn get phonePosition => text().withDefault(const Constant('other'))();
   IntColumn get startedAtMs => integer()();
   IntColumn get stoppedAtMs => integer().nullable()();
   IntColumn get trimmedStartMs => integer().nullable()();

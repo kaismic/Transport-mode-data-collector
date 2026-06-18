@@ -6,6 +6,8 @@ AWS SAM backend for invite-only uploads from the Flutter data collector app.
 
 - `POST /sessions/request-upload`
   - Validates an invite code.
+  - Validates the phone position (`hand`, `pocket`, `bag`, `stationary`, or
+    `other`).
   - Writes a pending session metadata row to DynamoDB.
   - Returns a presigned S3 `PUT` URL.
 - `POST /sessions/confirm-upload`

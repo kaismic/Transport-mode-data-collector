@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../../../core/database/app_database.dart';
 import '../../../core/invite_code_store.dart';
+import '../../../core/phone_positions.dart';
 import '../../../core/time_format.dart';
 import '../../../core/transport_modes.dart';
 import '../../setup/screens/setup_screen.dart';
@@ -29,7 +30,9 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
   RangeValues? _trimValues;
   String? _trimStartError;
   String? _trimEndError;
+  String? _phonePosition;
   var _trimInputsInitialized = false;
+  var _phonePositionInitialized = false;
   var _uploadRequested = false;
 
   @override
@@ -134,9 +137,18 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
               1000,
         );
     _initializeTrimInputs(currentTrim);
+    _initializePhonePosition(session.phonePosition);
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        Text('Phone position', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        PhonePositionSelector(
+          selectedPosition: _phonePosition ?? session.phonePosition,
+          enabled: canEdit,
+          onSelected: _updatePhonePosition,
+        ),
+        const SizedBox(height: 20),
         SizedBox(
           height: 240,
           child: _MagnitudeChart(
@@ -236,6 +248,28 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
         ),
       ],
     );
+  }
+
+  void _initializePhonePosition(String phonePosition) {
+    if (_phonePositionInitialized) return;
+    _phonePositionInitialized = true;
+    _phonePosition = phonePosition;
+  }
+
+  Future<void> _updatePhonePosition(String phonePosition) async {
+    if (_phonePosition == phonePosition) return;
+    final previous = _phonePosition;
+    setState(() => _phonePosition = phonePosition);
+    try {
+      await context.read<AppDatabase>().sessionDao.updatePhonePosition(
+        id: widget.sessionId,
+        phonePosition: phonePosition,
+      );
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _phonePosition = previous);
+      _showSnack('Could not update phone position: $error');
+    }
   }
 
   Future<void> _saveTrimAndUpload(
@@ -361,6 +395,8 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
       _trimStartError = null;
       _trimEndError = null;
       _trimInputsInitialized = false;
+      _phonePosition = null;
+      _phonePositionInitialized = false;
       _detailFuture = _loadDetail();
     });
   }
@@ -369,6 +405,41 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+class PhonePositionSelector extends StatelessWidget {
+  const PhonePositionSelector({
+    super.key,
+    required this.selectedPosition,
+    required this.enabled,
+    required this.onSelected,
+  });
+
+  final String selectedPosition;
+  final bool enabled;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        for (final position in phonePositions)
+          ChoiceChip(
+            key: Key('review-phone-position-${position.id}'),
+            label: Text(position.label),
+            selected: selectedPosition == position.id,
+            showCheckmark: false,
+            onSelected: enabled
+                ? (selected) {
+                    if (selected) onSelected(position.id);
+                  }
+                : null,
+          ),
+      ],
+    );
   }
 }
 

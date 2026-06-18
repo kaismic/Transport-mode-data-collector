@@ -14,6 +14,7 @@ class UploadPayload {
     required this.deviceUuid,
     required this.sessionId,
     required this.vehicleType,
+    required this.phonePosition,
     required this.startedAtMs,
     required this.stoppedAtMs,
     required this.trimmedStartMs,
@@ -23,12 +24,13 @@ class UploadPayload {
     required this.samples,
     this.collectionVersion = 1,
     this.appVersion = _appVersion,
-    this.schemaVersion = 1,
+    this.schemaVersion = 2,
   });
 
   final String deviceUuid;
   final String sessionId;
   final String vehicleType;
+  final String phonePosition;
   final int startedAtMs;
   final int stoppedAtMs;
   final int trimmedStartMs;
@@ -74,6 +76,7 @@ class UploadPayload {
       deviceUuid: session.deviceUuid,
       sessionId: session.id,
       vehicleType: session.vehicleType,
+      phonePosition: session.phonePosition,
       startedAtMs: session.startedAtMs,
       stoppedAtMs: stoppedAtMs,
       trimmedStartMs: trimStart,
@@ -89,6 +92,7 @@ class UploadPayload {
       'device_uuid': deviceUuid,
       'session_id': sessionId,
       'vehicle_type': vehicleType,
+      'phone_position': phonePosition,
       'started_at_ms': startedAtMs,
       'stopped_at_ms': stoppedAtMs,
       'trimmed_start_ms': trimmedStartMs,

@@ -103,6 +103,37 @@ void main() {
     await _disposeReviewScreen(tester);
   });
 
+  testWidgets('phone position selection updates session metadata', (
+    tester,
+  ) async {
+    await _insertSession(database, phonePosition: 'pocket');
+
+    await _pumpReviewScreen(
+      tester,
+      database: database,
+      inviteCodeStore: inviteCodeStore,
+      uploadService: _CompletingUploadService(),
+    );
+
+    final pocketChoice = tester.widget<ChoiceChip>(
+      find.byKey(const Key('review-phone-position-pocket')),
+    );
+    final handChoice = tester.widget<ChoiceChip>(
+      find.byKey(const Key('review-phone-position-hand')),
+    );
+    expect(pocketChoice.selected, isTrue);
+    expect(handChoice.selected, isFalse);
+
+    await tester.tap(find.byKey(const Key('review-phone-position-hand')));
+    await tester.pump();
+
+    expect(
+      (await database.sessionDao.getSession('session-id'))?.phonePosition,
+      'hand',
+    );
+    await _disposeReviewScreen(tester);
+  });
+
   testWidgets('time fields reject values outside the session', (tester) async {
     await _insertSession(database, stoppedAtMs: 121000);
 
@@ -244,12 +275,14 @@ Future<void> _insertSession(
   AppDatabase database, {
   int? uploadedAtMs,
   int stoppedAtMs = 2000,
+  String phonePosition = 'other',
 }) async {
   await database.sessionDao.insertSession(
     SessionsCompanion.insert(
       id: 'session-id',
       deviceUuid: 'device-id',
       vehicleType: 'car',
+      phonePosition: Value(phonePosition),
       startedAtMs: 1000,
       stoppedAtMs: Value(stoppedAtMs),
       trimmedEndMs: Value(stoppedAtMs),

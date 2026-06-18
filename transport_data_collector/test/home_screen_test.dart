@@ -4,6 +4,35 @@ import 'package:transport_data_collector/features/home/screens/home_screen.dart'
 import 'package:transport_data_collector/features/recording/bloc/recording_bloc.dart';
 
 void main() {
+  testWidgets('phone position picker returns the selected position', (
+    tester,
+  ) async {
+    String? selectedPosition;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: PhonePositionPicker(
+            onSelected: (position) => selectedPosition = position,
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Hand'), findsOneWidget);
+    expect(find.text('Pocket'), findsOneWidget);
+    expect(find.text('Bag'), findsOneWidget);
+    expect(find.text('Stationary'), findsOneWidget);
+    expect(find.text('Other'), findsOneWidget);
+    expect(find.byType(ListView), findsOneWidget);
+    expect(find.byType(ListTile), findsNWidgets(5));
+    expect(find.byType(Icon), findsNothing);
+
+    await tester.tap(find.byKey(const Key('phone-position-pocket')));
+
+    expect(selectedPosition, 'pocket');
+  });
+
   testWidgets('active recording action becomes a red stop button', (
     tester,
   ) async {

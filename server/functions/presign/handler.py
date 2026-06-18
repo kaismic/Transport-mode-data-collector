@@ -23,6 +23,7 @@ invite_codes_table = dynamodb.Table(os.environ["INVITE_CODES_TABLE_NAME"])
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
 ALLOWED_VEHICLE_TYPES = {"car", "bus", "train"}
+ALLOWED_PHONE_POSITIONS = {"hand", "pocket", "bag", "stationary", "other"}
 UUID_RE = re.compile(r"^[0-9a-fA-F-]{32,36}$")
 MAX_SAMPLE_COUNT = 2_000_000
 
@@ -59,6 +60,7 @@ def handler(event, context):
                 "participant_id": participant_id,
                 "device_uuid": payload["device_uuid"],
                 "vehicle_type": payload["vehicle_type"],
+                "phone_position": payload["phone_position"],
                 "started_at_ms": payload["started_at_ms"],
                 "stopped_at_ms": payload["stopped_at_ms"],
                 "trimmed_start_ms": payload["trimmed_start_ms"],
@@ -105,6 +107,7 @@ def _validate_body(body):
         "session_id",
         "device_uuid",
         "vehicle_type",
+        "phone_position",
         "started_at_ms",
         "stopped_at_ms",
         "trimmed_start_ms",
@@ -120,9 +123,14 @@ def _validate_body(body):
     session_id = _string(body, "session_id")
     device_uuid = _string(body, "device_uuid")
     vehicle_type = _string(body, "vehicle_type")
+    phone_position = _string(body, "phone_position")
     invite_code = _string(body, "invite_code").strip().upper()
     if vehicle_type not in ALLOWED_VEHICLE_TYPES:
         raise ValidationError("vehicle_type must be one of: car, bus, train")
+    if phone_position not in ALLOWED_PHONE_POSITIONS:
+        raise ValidationError(
+            "phone_position must be one of: hand, pocket, bag, stationary, other"
+        )
     if not UUID_RE.match(session_id):
         raise ValidationError("session_id must be a UUID-like string")
     if not UUID_RE.match(device_uuid):
@@ -155,6 +163,7 @@ def _validate_body(body):
         "session_id": session_id,
         "device_uuid": device_uuid,
         "vehicle_type": vehicle_type,
+        "phone_position": phone_position,
         "started_at_ms": started_at_ms,
         "stopped_at_ms": stopped_at_ms,
         "trimmed_start_ms": trimmed_start_ms,

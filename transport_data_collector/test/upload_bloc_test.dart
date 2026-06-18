@@ -19,7 +19,12 @@ void main() {
   test(
     'upload all continues after failures and skips ineligible sessions',
     () async {
-      await _insertSession(database, id: 'success', stopped: true);
+      await _insertSession(
+        database,
+        id: 'success',
+        stopped: true,
+        phonePosition: 'bag',
+      );
       await _insertSession(database, id: 'confirm', stopped: true);
       await _insertSession(database, id: 'failure', stopped: true);
       await _insertSession(database, id: 'active', stopped: false);
@@ -46,6 +51,9 @@ void main() {
       expect(result.confirmPending, 1);
       expect(result.failed, 1);
       expect(service.uploadedSessionIds, {'success', 'confirm', 'failure'});
+      expect(service.phonePositions['success'], 'bag');
+      expect(service.jsonPhonePositions['success'], 'bag');
+      expect(service.schemaVersions['success'], 2);
       expect(
         (await database.sessionDao.getSession('success'))?.uploadedAtMs,
         isNotNull,
@@ -93,12 +101,14 @@ Future<void> _insertSession(
   required String id,
   required bool stopped,
   int? uploadedAtMs,
+  String phonePosition = 'other',
 }) {
   return database.sessionDao.insertSession(
     SessionsCompanion.insert(
       id: id,
       deviceUuid: 'device-id',
       vehicleType: 'car',
+      phonePosition: Value(phonePosition),
       startedAtMs: 1000,
       stoppedAtMs: stopped ? const Value(2000) : const Value.absent(),
       trimmedEndMs: stopped ? const Value(2000) : const Value.absent(),
@@ -113,6 +123,9 @@ class _OutcomeUploadService extends UploadService {
 
   final Map<String, Object> outcomes;
   final uploadedSessionIds = <String>{};
+  final phonePositions = <String, String>{};
+  final jsonPhonePositions = <String, String>{};
+  final schemaVersions = <String, int>{};
 
   @override
   Future<void> uploadSession({
@@ -120,6 +133,10 @@ class _OutcomeUploadService extends UploadService {
     required String inviteCode,
   }) async {
     uploadedSessionIds.add(payload.sessionId);
+    phonePositions[payload.sessionId] = payload.phonePosition;
+    jsonPhonePositions[payload.sessionId] =
+        payload.toJson()['phone_position'] as String;
+    schemaVersions[payload.sessionId] = payload.schemaVersion;
     final outcome = outcomes[payload.sessionId];
     if (outcome != null) throw outcome;
   }
