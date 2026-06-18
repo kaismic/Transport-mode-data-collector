@@ -534,6 +534,16 @@ class _MagnitudeChart extends StatelessWidget {
         titlesData: const FlTitlesData(
           topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          bottomTitles: AxisTitles(
+            axisNameWidget: Text('Time (seconds)'),
+            axisNameSize: 24,
+            sideTitles: SideTitles(showTitles: true, reservedSize: 32),
+          ),
+          leftTitles: AxisTitles(
+            axisNameWidget: Text('Acceleration magnitude (m/s²)'),
+            axisNameSize: 24,
+            sideTitles: SideTitles(showTitles: true, reservedSize: 44),
+          ),
         ),
         extraLinesData: ExtraLinesData(
           verticalLines: [
@@ -558,6 +568,7 @@ class _MagnitudeChart extends StatelessWidget {
             color: Theme.of(context).colorScheme.primary,
           ),
         ],
+        lineTouchData: LineTouchData(enabled: false)
       ),
     );
   }

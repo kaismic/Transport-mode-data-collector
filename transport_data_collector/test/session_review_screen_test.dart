@@ -200,6 +200,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
 
     expect(find.text('No samples recorded'), findsNothing);
+    expect(find.text('Time (seconds)'), findsOneWidget);
+    expect(find.text('Acceleration magnitude (m/s²)'), findsOneWidget);
     expect(
       find.descendant(
         of: find.byKey(const Key('sample-count-stat')),
