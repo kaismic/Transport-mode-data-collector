@@ -12,10 +12,18 @@ def main():
 
     code = args.code.strip().upper()
     item = {
-        "code_hash": hashlib.sha256(code.encode("utf-8")).hexdigest(),
-        "participant_id": args.participant_id,
-        "active": True,
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "code_hash": {
+            "S": hashlib.sha256(code.encode("utf-8")).hexdigest()
+        },
+        "participant_id": {
+            "S": args.participant_id
+        },
+        "active": {
+            "BOOL": True
+        },
+        "created_at": {
+            "S": datetime.now(timezone.utc).isoformat()
+        }
     }
     print(json.dumps(item, indent=2))
 
