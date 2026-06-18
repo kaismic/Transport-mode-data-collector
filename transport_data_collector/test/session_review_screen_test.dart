@@ -155,6 +155,23 @@ void main() {
     await _disposeReviewScreen(tester);
   });
 
+  testWidgets('long sessions cap range slider divisions', (tester) async {
+    await _insertSession(database, stoppedAtMs: 7201000);
+
+    await _pumpReviewScreen(
+      tester,
+      database: database,
+      inviteCodeStore: inviteCodeStore,
+      uploadService: _CompletingUploadService(),
+    );
+
+    expect(
+      tester.widget<RangeSlider>(find.byType(RangeSlider)).divisions,
+      1000,
+    );
+    await _disposeReviewScreen(tester);
+  });
+
   testWidgets('sample chart updates when late samples arrive', (tester) async {
     await _insertSession(database);
 

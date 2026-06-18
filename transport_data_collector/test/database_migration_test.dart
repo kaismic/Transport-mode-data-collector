@@ -26,6 +26,23 @@ CREATE TABLE sessions (
   confirm_pending INTEGER NOT NULL DEFAULT 0
 )
 ''');
+    oldDatabase.execute('''
+CREATE TABLE samples (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions (id),
+  timestamp_ms INTEGER NOT NULL,
+  accel_x REAL NOT NULL,
+  accel_y REAL NOT NULL,
+  accel_z REAL NOT NULL,
+  gyro_x REAL NOT NULL,
+  gyro_y REAL NOT NULL,
+  gyro_z REAL NOT NULL,
+  mag_x REAL NULL,
+  mag_y REAL NULL,
+  mag_z REAL NULL,
+  pressure REAL NULL
+)
+''');
     oldDatabase.execute(
       '''
 INSERT INTO sessions (
@@ -43,8 +60,15 @@ INSERT INTO sessions (
 
     final database = AppDatabase.forTesting(NativeDatabase(file));
     final session = await database.sessionDao.getSession('session-id');
+    final index = await database
+        .customSelect(
+          "SELECT name FROM sqlite_master "
+          "WHERE type = 'index' AND name = 'samples_session_timestamp_idx'",
+        )
+        .getSingleOrNull();
 
     expect(session?.phonePosition, 'other');
+    expect(index, isNotNull);
 
     await database.close();
     await directory.delete(recursive: true);

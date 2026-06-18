@@ -6,6 +6,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter/services.dart';
 
 import '../../../core/database/app_database.dart';
+import '../../../core/database/daos/sample_dao.dart';
 import '../../../core/invite_code_store.dart';
 import '../../../core/phone_positions.dart';
 import '../../../core/time_format.dart';
@@ -23,8 +24,8 @@ class SessionReviewScreen extends StatefulWidget {
 }
 
 class _SessionReviewScreenState extends State<SessionReviewScreen> {
-  late Future<_SessionDetail> _detailFuture;
-  late Stream<List<Sample>> _samplesStream;
+  late Future<Session> _sessionFuture;
+  late Stream<_SessionSampleSummary> _samplesStream;
   final _trimStartController = TextEditingController();
   final _trimEndController = TextEditingController();
   RangeValues? _trimValues;
@@ -34,23 +35,31 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
   var _trimInputsInitialized = false;
   var _phonePositionInitialized = false;
   var _uploadRequested = false;
+  var _initialized = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final db = context.read<AppDatabase>();
-    _detailFuture = _loadDetail();
-    _samplesStream = db.sampleDao.watchSamplesForSession(widget.sessionId);
+    if (_initialized) return;
+    _initialized = true;
+    _sessionFuture = _loadSession();
   }
 
-  Future<_SessionDetail> _loadDetail() async {
+  Future<Session> _loadSession() async {
     final db = context.read<AppDatabase>();
     final session = await db.sessionDao.getSession(widget.sessionId);
     if (session == null) {
       throw StateError('Session not found.');
     }
-    final samples = await db.sampleDao.getSamplesForSession(widget.sessionId);
-    return _SessionDetail(session: session, samples: samples);
+    _samplesStream = db.sampleDao
+        .watchReviewSampleOverview(widget.sessionId)
+        .map(
+          (overview) => _SessionSampleSummary.fromOverview(
+            overview,
+            startedAtMs: session.startedAtMs,
+          ),
+        );
+    return session;
   }
 
   @override
@@ -78,8 +87,8 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
       },
       builder: (context, uploadState) => Scaffold(
         appBar: AppBar(title: const Text('Session Review')),
-        body: FutureBuilder<_SessionDetail>(
-          future: _detailFuture,
+        body: FutureBuilder<Session>(
+          future: _sessionFuture,
           builder: (context, snapshot) {
             if (snapshot.hasError) {
               return Center(child: Text(snapshot.error.toString()));
@@ -87,15 +96,15 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
             if (!snapshot.hasData) {
               return const Center(child: CircularProgressIndicator());
             }
-            final detail = snapshot.data!;
-            return StreamBuilder<List<Sample>>(
+            final session = snapshot.data!;
+            return StreamBuilder<_SessionSampleSummary>(
               stream: _samplesStream,
-              initialData: detail.samples,
               builder: (context, samplesSnapshot) {
                 return _buildDetail(
                   uploadState,
-                  detail.copyWith(
-                    samples: samplesSnapshot.data ?? detail.samples,
+                  _SessionDetail(
+                    session: session,
+                    sampleSummary: samplesSnapshot.data,
                   ),
                 );
               },
@@ -152,7 +161,7 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
         SizedBox(
           height: 240,
           child: _MagnitudeChart(
-            spots: detail.chartSpots,
+            spots: detail.sampleSummary?.spots,
             trim: currentTrim,
             maxSeconds: maxSeconds.toDouble(),
           ),
@@ -165,7 +174,7 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
           ),
           min: 0,
           max: maxSeconds.toDouble(),
-          divisions: max(1, maxSeconds.round()),
+          divisions: min(1000, max(1, maxSeconds.round())),
           labels: RangeLabels(
             formatDuration(Duration(seconds: currentTrim.start.round())),
             formatDuration(Duration(seconds: currentTrim.end.round())),
@@ -397,7 +406,7 @@ class _SessionReviewScreenState extends State<SessionReviewScreen> {
       _trimInputsInitialized = false;
       _phonePosition = null;
       _phonePositionInitialized = false;
-      _detailFuture = _loadDetail();
+      _sessionFuture = _loadSession();
     });
   }
 
@@ -504,13 +513,17 @@ class _MagnitudeChart extends StatelessWidget {
     required this.maxSeconds,
   });
 
-  final List<FlSpot> spots;
+  final List<FlSpot>? spots;
   final RangeValues trim;
   final double maxSeconds;
 
   @override
   Widget build(BuildContext context) {
-    if (spots.isEmpty) {
+    final chartSpots = spots;
+    if (chartSpots == null) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (chartSpots.isEmpty) {
       return const Center(child: Text('No samples recorded'));
     }
     return LineChart(
@@ -538,7 +551,7 @@ class _MagnitudeChart extends StatelessWidget {
         ),
         lineBarsData: [
           LineChartBarData(
-            spots: spots,
+            spots: chartSpots,
             isCurved: false,
             barWidth: 2,
             dotData: const FlDotData(show: false),
@@ -583,7 +596,9 @@ class _StatsPanel extends StatelessWidget {
           _StatRow(
             key: const Key('sample-count-stat'),
             label: 'Samples',
-            value: '${detail.samples.length}',
+            value: detail.sampleSummary == null
+                ? 'Loading...'
+                : '${detail.sampleSummary!.sampleCount}',
           ),
         ],
       ),
@@ -612,14 +627,10 @@ class _StatRow extends StatelessWidget {
 }
 
 class _SessionDetail {
-  const _SessionDetail({required this.session, required this.samples});
+  const _SessionDetail({required this.session, required this.sampleSummary});
 
   final Session session;
-  final List<Sample> samples;
-
-  _SessionDetail copyWith({List<Sample>? samples}) {
-    return _SessionDetail(session: session, samples: samples ?? this.samples);
-  }
+  final _SessionSampleSummary? sampleSummary;
 
   Duration get duration {
     return sessionDuration(
@@ -627,21 +638,32 @@ class _SessionDetail {
       stoppedAtMs: session.stoppedAtMs,
     );
   }
+}
 
-  List<FlSpot> get chartSpots {
-    if (samples.isEmpty) return const [];
-    final stride = max(1, (samples.length / 500).ceil());
-    final spots = <FlSpot>[];
-    for (var i = 0; i < samples.length; i += stride) {
-      final sample = samples[i];
-      final seconds = (sample.timestampMs - session.startedAtMs) / 1000;
-      final magnitude = sqrt(
-        sample.accelX * sample.accelX +
-            sample.accelY * sample.accelY +
-            sample.accelZ * sample.accelZ,
-      );
-      spots.add(FlSpot(seconds, magnitude));
-    }
-    return spots;
+class _SessionSampleSummary {
+  const _SessionSampleSummary({required this.sampleCount, required this.spots});
+
+  factory _SessionSampleSummary.fromOverview(
+    ReviewSampleOverview overview, {
+    required int startedAtMs,
+  }) {
+    final spots = <FlSpot>[
+      for (final sample in overview.points)
+        FlSpot(
+          (sample.timestampMs - startedAtMs) / 1000,
+          sqrt(
+            sample.accelX * sample.accelX +
+                sample.accelY * sample.accelY +
+                sample.accelZ * sample.accelZ,
+          ),
+        ),
+    ];
+    return _SessionSampleSummary(
+      sampleCount: overview.sampleCount,
+      spots: spots,
+    );
   }
+
+  final int sampleCount;
+  final List<FlSpot> spots;
 }
