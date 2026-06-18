@@ -16,7 +16,7 @@ const transportModes = <TransportMode>[
   TransportMode(id: 'car', label: 'Car', icon: Icons.directions_car),
   TransportMode(id: 'bus', label: 'Bus', icon: Icons.directions_bus),
   TransportMode(id: 'train', label: 'Train', icon: Icons.train),
-  TransportMode(id: 'metro', label: 'Metro', icon: Icons.directions_subway),
+  TransportMode(id: 'metro', label: 'Metro', icon: Icons.subway),
   TransportMode(id: 'tram', label: 'Tram', icon: Icons.tram)
 ];
 
