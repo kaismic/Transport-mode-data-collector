@@ -1,17 +1,104 @@
-# transport_data_collector
+# Transport Data Collector
 
-A new Flutter project.
+Flutter application for recording phone sensor data, reviewing sessions, and
+uploading approved data to the TCCT API.
 
-## Getting Started
+## Local configuration
 
-This project is a starting point for a Flutter application.
+Development builds read compile-time values from `config/dev.env`:
 
-A few resources to get you started if this is your first Flutter project:
+```text
+API_BASE_URL=https://example.execute-api.ap-southeast-2.amazonaws.com/Prod
+APP_VERSION=1.0.0+1
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Run the app with:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+```shell
+flutter pub get
+flutter run --dart-define-from-file=config/dev.env
+```
+
+The repository's **Flutter: Development** VS Code launch configuration supplies
+the same environment file.
+
+## iOS test environment
+
+iOS builds require macOS; Windows can edit and test the shared Dart code but
+cannot run Xcode, CocoaPods, the iOS simulator, or an iPhone build.
+
+Install on the Mac:
+
+- Xcode and its command-line tools
+- Flutter stable
+- CocoaPods
+- An Apple ID added under Xcode **Settings > Accounts**
+
+Then prepare the project:
+
+```shell
+cd transport_data_collector
+flutter doctor -v
+flutter pub get
+cd ios
+pod install --repo-update
+open Runner.xcworkspace
+```
+
+Always open `Runner.xcworkspace`, not `Runner.xcodeproj`, because the app uses
+native Flutter plugins installed by CocoaPods.
+
+### Signing and physical iPhone setup
+
+In Xcode:
+
+1. Select **Runner** in the project navigator, then the **Runner** target.
+2. Open **Signing & Capabilities**.
+3. Leave **Automatically manage signing** enabled and choose your Apple
+   development team.
+4. If `com.kaismic.transportDataCollector` is unavailable to that team, assign
+   a unique bundle identifier. Keep the `.RunnerTests` identifier aligned.
+5. Connect and unlock the iPhone, trust the Mac, and enable Developer Mode when
+   iOS requests it.
+6. Select the iPhone as the run destination.
+
+You can run from Xcode or from the app directory:
+
+```shell
+flutter devices
+flutter run -d <iphone-device-id> --dart-define-from-file=config/dev.env
+```
+
+Use a physical iPhone for sensor validation. The simulator does not provide a
+representative accelerometer, gyroscope, magnetometer, or barometer stream.
+
+### iPhone smoke test
+
+1. Launch the app and accept notification and motion access when prompted.
+2. Start a recording and verify samples begin arriving within five seconds.
+3. Lock the phone for at least 30 seconds, unlock it, then stop the session.
+4. Confirm the review screen contains sensor samples and the session can be
+   edited.
+5. Upload the session and verify the API accepts it.
+6. Repeat once with the app backgrounded.
+
+The recording implementation uses `flutter_foreground_task`. iOS does not offer
+Android-style indefinite foreground services: after the app is backgrounded,
+execution time is controlled by iOS, and a force-quit stops the task. Treat
+long locked-screen/background recordings as an explicit device test rather
+than assuming Android behavior.
+
+## Validation
+
+Run the platform-independent checks on any development machine:
+
+```shell
+flutter analyze
+flutter test
+```
+
+On macOS, also verify that the native target compiles without signing:
+
+```shell
+flutter build ios --simulator --dart-define-from-file=config/dev.env
+```
