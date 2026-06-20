@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
 
 import '../../../core/database/app_database.dart';
 import '../../recording/models/sensor_sample.dart';
@@ -89,6 +90,17 @@ class UploadPayload {
 
   Map<String, dynamic> toJson() {
     return {
+      ..._metadataJson(),
+      'samples': samples.map((sample) => sample.toJson()).toList(),
+    };
+  }
+
+  Future<GzipUploadFile> writeToTemporaryGzipFile() {
+    return Isolate.run(() => _writeToTemporaryGzipFile(this));
+  }
+
+  Map<String, dynamic> _metadataJson() {
+    return {
       'device_uuid': deviceUuid,
       'session_id': sessionId,
       'vehicle_type': vehicleType,
@@ -102,12 +114,72 @@ class UploadPayload {
       'app_version': appVersion,
       'schema_version': schemaVersion,
       'sensor_manifest': jsonDecode(sensorManifest),
-      'samples': samples.map((sample) => sample.toJson()).toList(),
     };
   }
+}
 
-  List<int> toGzipBytes() {
-    final jsonBytes = utf8.encode(jsonEncode(toJson()));
-    return GZipCodec().encode(jsonBytes);
+class GzipUploadFile {
+  const GzipUploadFile({required this.path, required this.length});
+
+  final String path;
+  final int length;
+
+  Stream<List<int>> openRead() => File(path).openRead();
+
+  Future<void> delete() async {
+    final file = File(path);
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } on FileSystemException {
+      return;
+    }
+
+    final directory = file.parent;
+    try {
+      if (await directory.exists()) {
+        await directory.delete();
+      }
+    } on FileSystemException {
+      // A stale temp directory is preferable to treating a completed upload
+      // as failed and uploading the same session again.
+    }
+  }
+}
+
+Future<GzipUploadFile> _writeToTemporaryGzipFile(UploadPayload payload) async {
+  final directory = await Directory.systemTemp.createTemp(
+    'transport-data-upload-',
+  );
+  final file = File(
+    '${directory.path}${Platform.pathSeparator}payload.json.gz',
+  );
+
+  try {
+    final fileSink = file.openWrite();
+    final gzipSink = GZipCodec().encoder.startChunkedConversion(fileSink);
+    final textSink = utf8.encoder.startChunkedConversion(gzipSink);
+    final metadata = jsonEncode(payload._metadataJson());
+
+    textSink.add('${metadata.substring(0, metadata.length - 1)},"samples":[');
+    for (var index = 0; index < payload.samples.length; index++) {
+      if (index > 0) textSink.add(',');
+      textSink.add(jsonEncode(payload.samples[index].toJson()));
+    }
+    textSink.add(']}');
+    textSink.close();
+    await fileSink.done;
+
+    return GzipUploadFile(path: file.path, length: await file.length());
+  } catch (_) {
+    try {
+      if (await directory.exists()) {
+        await directory.delete(recursive: true);
+      }
+    } on FileSystemException {
+      // Preserve the encoding error if best-effort cleanup also fails.
+    }
+    rethrow;
   }
 }

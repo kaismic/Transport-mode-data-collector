@@ -114,21 +114,23 @@ class UploadService {
   }
 
   Future<void> _putToS3(String presignedUrl, UploadPayload payload) async {
-    final gzipBytes = payload.toGzipBytes();
+    final gzipFile = await payload.writeToTemporaryGzipFile();
     try {
       await _s3.put<void>(
         presignedUrl,
-        data: Stream.fromIterable([gzipBytes]),
+        data: gzipFile.openRead(),
         options: Options(
           headers: {
             HttpHeaders.contentTypeHeader: 'application/json',
             HttpHeaders.contentEncodingHeader: 'gzip',
-            HttpHeaders.contentLengthHeader: gzipBytes.length,
+            HttpHeaders.contentLengthHeader: gzipFile.length,
           },
         ),
       );
     } on DioException catch (error) {
       throw S3PutException('S3 PUT failed: ${error.message}');
+    } finally {
+      await gzipFile.delete();
     }
   }
 }
