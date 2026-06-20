@@ -1,5 +1,7 @@
 import 'dart:math';
 
+const _sensorOutputDecimalPlaces = 8;
+
 class SensorSample {
   const SensorSample({
     required this.timestampMs,
@@ -34,16 +36,23 @@ class SensorSample {
   Map<String, dynamic> toJson() {
     return {
       'ts': timestampMs,
-      'ax': accelX,
-      'ay': accelY,
-      'az': accelZ,
-      'gx': gyroX,
-      'gy': gyroY,
-      'gz': gyroZ,
-      if (magX != null) 'mx': magX,
-      if (magY != null) 'my': magY,
-      if (magZ != null) 'mz': magZ,
-      if (pressure != null) 'p': pressure,
+      'ax': _toOutputPrecision(accelX),
+      'ay': _toOutputPrecision(accelY),
+      'az': _toOutputPrecision(accelZ),
+      'gx': _toOutputPrecision(gyroX),
+      'gy': _toOutputPrecision(gyroY),
+      'gz': _toOutputPrecision(gyroZ),
+      if (magX != null) 'mx': _toOutputPrecision(magX!),
+      if (magY != null) 'my': _toOutputPrecision(magY!),
+      if (magZ != null) 'mz': _toOutputPrecision(magZ!),
+      if (pressure != null) 'p': _toOutputPrecision(pressure!),
     };
   }
+}
+
+double _toOutputPrecision(double value) {
+  final rounded = double.parse(
+    value.toStringAsFixed(_sensorOutputDecimalPlaces),
+  );
+  return rounded == 0 ? 0 : rounded;
 }

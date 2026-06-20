@@ -1106,26 +1106,26 @@ def load_session(s3_key: str) -> dict:
 ## Checklist: Done When…
 
 **Flutter app**
-- [ ] App generates and persists UUID on first launch
-- [ ] Selecting a vehicle type and pressing start creates a session and starts the foreground service
-- [ ] Sensor data is written to SQLite at ~50 Hz while the app is backgrounded
-- [ ] Persistent notification shows vehicle type and elapsed time with a working Stop button
-- [ ] Stopping the recording (notification or in-app) sets `stoppedAtMs` correctly
-- [ ] Review list shows all sessions with correct status badges
-- [ ] Session detail shows magnitude chart and trim sliders
-- [ ] Trim adjustments persist to `trimmedStartMs`/`trimmedEndMs` in the DB
-- [ ] Upload serialises only samples within the trim range and gzip-compresses the body
-- [ ] `UploadService` completes the full three-step flow (presign → PUT → confirm)
+- [x] App generates and persists UUID on first launch
+- [x] Selecting a vehicle type and pressing start creates a session and starts the foreground service
+- [x] Sensor data is written to SQLite at ~50 Hz while the app is backgrounded
+- [x] Persistent notification shows vehicle type and elapsed time with a working Stop button
+- [x] Stopping the recording (notification or in-app) sets `stoppedAtMs` correctly
+- [x] Review list shows all sessions with correct status badges
+- [x] Session detail shows magnitude chart and trim sliders
+- [x] Trim adjustments persist to `trimmedStartMs`/`trimmedEndMs` in the DB
+- [x] Upload serialises only samples within the trim range and gzip-compresses the body
+- [x] `UploadService` completes the full three-step flow (presign → PUT → confirm)
 - [x] `ConfirmException` is treated as a soft warning; `confirmPending` flag is set and retried on next launch
-- [ ] Upload marks session with `uploadedAtMs` on success
-- [ ] Hard upload failures show an error and allow retry
-- [ ] App handles missing barometer gracefully (no crash, manifest shows `available: false`)
-- [ ] API base URL is configurable via `--dart-define` with no hardcoded production URL
+- [x] Upload marks session with `uploadedAtMs` on success
+- [x] Hard upload failures show an error and allow retry
+- [x] App handles missing barometer gracefully (no crash, manifest shows `available: false`)
+- [x] API base URL is configurable via `--dart-define` with no hardcoded production URL
 
 **Server**
-- [ ] SAM template deploys cleanly with `sam build && sam deploy`
-- [ ] `presign_handler` returns a valid presigned URL and writes a `pending` DynamoDB record
-- [ ] A direct `curl` PUT to the presigned URL with `Content-Type: application/json` + `Content-Encoding: gzip` succeeds (HTTP 200 from S3)
-- [ ] `confirm_handler` updates the DynamoDB record status to `received`
-- [ ] A session uploaded from the Flutter app appears in DynamoDB with `status=received`
-- [ ] `query_sessions.py` can list and decompress sessions from S3 into a Python dict
+- [x] SAM template deploys cleanly with `sam build && sam deploy`
+- [x] `presign_handler` returns a valid presigned URL and writes a `pending` DynamoDB record
+- [x] A direct `curl` PUT to the presigned URL with `Content-Type: application/json` + `Content-Encoding: gzip` succeeds (HTTP 200 from S3)
+- [x] `confirm_handler` updates the DynamoDB record status to `received`
+- [x] A session uploaded from the Flutter app appears in DynamoDB with `status=received`
+- [x] `query_sessions.py` can list and decompress sessions from S3 into a Python dict
