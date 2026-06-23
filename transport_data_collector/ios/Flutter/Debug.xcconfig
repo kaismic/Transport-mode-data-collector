@@ -1,1 +1,2 @@
+#include "DartDefines.xcconfig"
 #include "Generated.xcconfig"

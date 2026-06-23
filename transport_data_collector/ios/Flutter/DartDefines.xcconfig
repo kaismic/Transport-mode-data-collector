@@ -1,0 +1,5 @@
+// Fallback compile-time configuration for builds launched directly from Xcode.
+// Values are base64-encoded KEY=VALUE entries, as required by Flutter's
+// DART_DEFINES build setting. Generated.xcconfig is included after this file so
+// values passed by `flutter run` or `flutter build` can override these defaults.
+DART_DEFINES=QVBJX0JBU0VfVVJMPWh0dHBzOi8vcG1lZ3YwYWJrOC5leGVjdXRlLWFwaS5hcC1zb3V0aGVhc3QtMi5hbWF6b25hd3MuY29tL1Byb2Q=,QVBQX1ZFUlNJT049MS4wLjArMQ==

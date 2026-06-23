@@ -69,6 +69,11 @@ flutter devices
 flutter run -d <iphone-device-id> --dart-define-from-file=config/dev.env
 ```
 
+Builds launched directly from Xcode use the fallback values in
+`ios/Flutter/DartDefines.xcconfig`. Keep its base64-encoded `KEY=VALUE` entries
+in sync with `config/dev.env` when changing the API endpoint. Values supplied
+by `flutter run` or `flutter build` take precedence over these fallbacks.
+
 Use a physical iPhone for sensor validation. The simulator does not provide a
 representative accelerometer, gyroscope, magnetometer, or barometer stream.
 
