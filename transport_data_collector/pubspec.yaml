@@ -43,7 +43,12 @@ dependencies:
   flutter_foreground_task: ^8.0.0
   intl: ^0.19.0
   permission_handler: ^11.3.1
-  sensors_plus: ^6.0.0
+  # sensors_plus: ^6.0.0
+  sensors_plus:
+    git:
+      url: https://github.com/kaismic/plus_plugins.git
+      path: packages/sensors_plus/sensors_plus
+      ref: patch-1
   shared_preferences: ^2.2.3
   uuid: ^4.4.0
 
