@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:drift/drift.dart' show Value;
@@ -91,7 +92,9 @@ class RecordingService {
     try {
       final result = await startForegroundService(
         notificationTitle: 'Recording ${mode.label}',
-        notificationText: 'Elapsed 00:00',
+        notificationText: Platform.isIOS
+            ? 'Recording in progress'
+            : 'Elapsed 00:00',
         notificationButtons: [
           const NotificationButton(id: 'stop', text: 'Stop'),
         ],

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:drift/drift.dart';
@@ -62,6 +63,8 @@ class RecordingTaskHandler extends TaskHandler {
   @override
   void onRepeatEvent(DateTime timestamp) {
     _flushInBackground();
+    if (!Platform.isAndroid) return;
+
     final startedAtMs = _startedAtMs;
     if (startedAtMs != null) {
       final elapsed = Duration(
