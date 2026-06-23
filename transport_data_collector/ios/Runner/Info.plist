@@ -31,7 +31,7 @@
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSMotionUsageDescription</key>
-	<string>Transport Data Collector uses motion and pressure sensors to identify transport modes during recording sessions.</string>
+	<string>Transport Data Collector collects motion and pressure sensor data from users' devices across different modes of transport.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
