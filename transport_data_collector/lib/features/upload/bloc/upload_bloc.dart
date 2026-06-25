@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 
 import '../../../core/database/app_database.dart';
 import '../models/upload_exception.dart';
@@ -207,9 +208,11 @@ class UploadBloc extends Bloc<UploadEvent, UploadState> {
       throw StateError('Session has already been uploaded.');
     }
     final samples = await database.sampleDao.getSamplesForSession(sessionId);
+    final appVersion = await _currentAppVersion();
     final payload = UploadPayload.fromSessionAndSamples(
       session: session,
       samples: samples,
+      appVersion: appVersion,
     );
     try {
       await uploadService.uploadSession(
@@ -233,3 +236,9 @@ class UploadBloc extends Bloc<UploadEvent, UploadState> {
 }
 
 enum _UploadOutcome { uploaded, confirmPending }
+
+Future<String> _currentAppVersion() async {
+  final packageInfo = await PackageInfo.fromPlatform();
+  if (packageInfo.buildNumber.isEmpty) return packageInfo.version;
+  return '${packageInfo.version}+${packageInfo.buildNumber}';
+}

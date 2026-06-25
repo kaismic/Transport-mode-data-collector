@@ -5,6 +5,7 @@ import 'package:drift/native.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:transport_data_collector/core/database/app_database.dart';
 import 'package:transport_data_collector/core/invite_code_store.dart';
@@ -18,6 +19,13 @@ void main() {
   late InviteCodeStore inviteCodeStore;
 
   setUp(() async {
+    PackageInfo.setMockInitialValues(
+      appName: 'Transport Data Collector',
+      packageName: 'transport_data_collector',
+      version: '1.0.1',
+      buildNumber: '2',
+      buildSignature: '',
+    );
     SharedPreferences.setMockInitialValues({'invite_code': 'KAIS-TEST'});
     inviteCodeStore = await InviteCodeStore.load();
     database = AppDatabase.forTesting(NativeDatabase.memory());

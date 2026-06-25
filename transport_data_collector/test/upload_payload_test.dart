@@ -18,6 +18,7 @@ void main() {
       trimmedEndMs: 2500,
       uploadedAtMs: 4000,
       sensorManifest: '{"accelerometer":true}',
+      appVersion: '1.0.1+2',
       samples: [
         SensorSample(
           timestampMs: 2000,

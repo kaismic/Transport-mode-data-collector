@@ -5,11 +5,6 @@ import 'dart:isolate';
 import '../../../core/database/app_database.dart';
 import '../../recording/models/sensor_sample.dart';
 
-const _appVersion = String.fromEnvironment(
-  'APP_VERSION',
-  defaultValue: '1.0.0+1',
-);
-
 class UploadPayload {
   const UploadPayload({
     required this.deviceUuid,
@@ -23,8 +18,8 @@ class UploadPayload {
     required this.uploadedAtMs,
     required this.sensorManifest,
     required this.samples,
+    required this.appVersion,
     this.collectionVersion = 1,
-    this.appVersion = _appVersion,
     this.schemaVersion = 2,
   });
 
@@ -46,6 +41,7 @@ class UploadPayload {
   factory UploadPayload.fromSessionAndSamples({
     required Session session,
     required List<Sample> samples,
+    required String appVersion,
   }) {
     final stoppedAtMs = session.stoppedAtMs;
     if (stoppedAtMs == null) {
@@ -85,6 +81,7 @@ class UploadPayload {
       uploadedAtMs: DateTime.now().millisecondsSinceEpoch,
       sensorManifest: session.sensorManifest,
       samples: trimmedSamples,
+      appVersion: appVersion,
     );
   }
 

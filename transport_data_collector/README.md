@@ -9,8 +9,11 @@ Development builds read compile-time values from `config/dev.env`:
 
 ```text
 API_BASE_URL=https://example.execute-api.ap-southeast-2.amazonaws.com/Prod
-APP_VERSION=1.0.0+1
 ```
+
+Copy `config/dev.env.example` to `config/dev.env` and set the local API URL.
+The uploaded app version is read from the Flutter package metadata generated
+from `pubspec.yaml`.
 
 Run the app with:
 

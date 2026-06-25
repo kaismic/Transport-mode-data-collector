@@ -1,6 +1,7 @@
 import 'package:drift/drift.dart' show Value;
 import 'package:drift/native.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:transport_data_collector/core/database/app_database.dart';
 import 'package:transport_data_collector/features/upload/bloc/upload_bloc.dart';
 import 'package:transport_data_collector/features/upload/models/upload_exception.dart';
@@ -11,6 +12,13 @@ void main() {
   late AppDatabase database;
 
   setUp(() {
+    PackageInfo.setMockInitialValues(
+      appName: 'Transport Data Collector',
+      packageName: 'transport_data_collector',
+      version: '1.0.1',
+      buildNumber: '2',
+      buildSignature: '',
+    );
     database = AppDatabase.forTesting(NativeDatabase.memory());
   });
 
@@ -53,6 +61,7 @@ void main() {
       expect(service.uploadedSessionIds, {'success', 'confirm', 'failure'});
       expect(service.phonePositions['success'], 'bag');
       expect(service.jsonPhonePositions['success'], 'bag');
+      expect(service.appVersions['success'], '1.0.1+2');
       expect(service.schemaVersions['success'], 2);
       expect(
         (await database.sessionDao.getSession('success'))?.uploadedAtMs,
@@ -125,6 +134,7 @@ class _OutcomeUploadService extends UploadService {
   final uploadedSessionIds = <String>{};
   final phonePositions = <String, String>{};
   final jsonPhonePositions = <String, String>{};
+  final appVersions = <String, String>{};
   final schemaVersions = <String, int>{};
 
   @override
@@ -136,6 +146,7 @@ class _OutcomeUploadService extends UploadService {
     phonePositions[payload.sessionId] = payload.phonePosition;
     jsonPhonePositions[payload.sessionId] =
         payload.toJson()['phone_position'] as String;
+    appVersions[payload.sessionId] = payload.appVersion;
     schemaVersions[payload.sessionId] = payload.schemaVersion;
     final outcome = outcomes[payload.sessionId];
     if (outcome != null) throw outcome;
