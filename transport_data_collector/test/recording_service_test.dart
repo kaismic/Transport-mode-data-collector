@@ -128,6 +128,20 @@ void main() {
     },
   );
 
+  test('updates manifest without stopping the session', () async {
+    await _insertActiveSession(database);
+
+    await database.sessionDao.updateSensorManifest(
+      id: 'session-id',
+      sensorManifest: '{"accelerometer":{"available":true}}',
+    );
+
+    final session = await database.sessionDao.getSession('session-id');
+    expect(session?.sensorManifest, '{"accelerometer":{"available":true}}');
+    expect(session?.stoppedAtMs, isNull);
+    expect(session?.trimmedEndMs, isNull);
+  });
+
   test('stop fallback does not overwrite an already stopped session', () async {
     await _insertActiveSession(database);
     await database.sessionDao.markStopped(

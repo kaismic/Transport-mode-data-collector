@@ -15,8 +15,10 @@ class RecordingTaskHandler extends TaskHandler {
   StreamSubscription? _sampleSubscription;
   final _buffer = <SamplesCompanion>[];
   Future<void> _pendingFlush = Future<void>.value();
+  Future<void> _pendingManifestPersist = Future<void>.value();
   String? _sessionId;
   int? _startedAtMs;
+  String? _lastPersistedManifestJson;
   var _reportedReady = false;
 
   @override
@@ -55,6 +57,7 @@ class RecordingTaskHandler extends TaskHandler {
         FlutterForegroundTask.sendDataToMain(
           recordingReadyTaskMessage(sessionId),
         );
+        _persistManifestInBackground();
         _flushInBackground();
       }
     });
@@ -63,6 +66,7 @@ class RecordingTaskHandler extends TaskHandler {
   @override
   void onRepeatEvent(DateTime timestamp) {
     _flushInBackground();
+    _persistManifestInBackground();
     if (!Platform.isAndroid) return;
 
     final startedAtMs = _startedAtMs;
@@ -82,16 +86,21 @@ class RecordingTaskHandler extends TaskHandler {
   Future<void> onDestroy(DateTime timestamp) async {
     await _sampleSubscription?.cancel();
     await _flush();
+    await _pendingManifestPersist.catchError((Object _) {});
     final db = _db;
     final sessionId = _sessionId;
     final sensorService = _sensorService;
     if (db != null && sessionId != null) {
-      await db.sessionDao.markStopped(
-        id: sessionId,
-        stoppedAtMs: DateTime.now().millisecondsSinceEpoch,
-        sensorManifest:
-            sensorService?.manifest.toJson() ?? SensorManifestFallback.json,
+      final manifestJson =
+          sensorService?.manifest.toJson() ?? SensorManifestFallback.json;
+      await _retryDatabaseLock(
+        () => db.sessionDao.markStopped(
+          id: sessionId,
+          stoppedAtMs: DateTime.now().millisecondsSinceEpoch,
+          sensorManifest: manifestJson,
+        ),
       );
+      _lastPersistedManifestJson = manifestJson;
       await db.close();
     }
     await sensorService?.dispose();
@@ -115,6 +124,10 @@ class RecordingTaskHandler extends TaskHandler {
     unawaited(_flush().catchError((Object _) {}));
   }
 
+  void _persistManifestInBackground() {
+    unawaited(_persistManifest().catchError((Object _) {}));
+  }
+
   Future<void> _flush() async {
     final flush = _pendingFlush
         .catchError((Object _) {})
@@ -129,6 +142,32 @@ class RecordingTaskHandler extends TaskHandler {
     final rows = List<SamplesCompanion>.from(_buffer);
     await _retryDatabaseLock(() => db.sampleDao.insertSamples(rows));
     _buffer.removeRange(0, rows.length);
+  }
+
+  Future<void> _persistManifest() async {
+    final persist = _pendingManifestPersist
+        .catchError((Object _) {})
+        .then((_) => _writeManifestIfChanged());
+    _pendingManifestPersist = persist;
+    return persist;
+  }
+
+  Future<void> _writeManifestIfChanged() async {
+    final db = _db;
+    final sessionId = _sessionId;
+    final sensorService = _sensorService;
+    if (db == null || sessionId == null || sensorService == null) return;
+
+    final manifestJson = sensorService.manifest.toJson();
+    if (manifestJson == _lastPersistedManifestJson) return;
+
+    await _retryDatabaseLock(
+      () => db.sessionDao.updateSensorManifest(
+        id: sessionId,
+        sensorManifest: manifestJson,
+      ),
+    );
+    _lastPersistedManifestJson = manifestJson;
   }
 
   Future<T> _retryDatabaseLock<T>(Future<T> Function() action) async {

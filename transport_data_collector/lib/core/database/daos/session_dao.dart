@@ -50,6 +50,15 @@ class SessionDao extends DatabaseAccessor<AppDatabase> with _$SessionDaoMixin {
     );
   }
 
+  Future<void> updateSensorManifest({
+    required String id,
+    required String sensorManifest,
+  }) {
+    return (update(sessions)..where((t) => t.id.equals(id))).write(
+      SessionsCompanion(sensorManifest: Value(sensorManifest)),
+    );
+  }
+
   Future<int> markStopObserved({required String id, required int stoppedAtMs}) {
     return customUpdate(
       '''
