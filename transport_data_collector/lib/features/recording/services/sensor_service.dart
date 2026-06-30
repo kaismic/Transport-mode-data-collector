@@ -46,10 +46,8 @@ class SensorService {
   }
 
   void _start() {
-    const targetPeriod = SensorInterval.normalInterval;
-
     _subscriptions.add(
-      gyroscopeEventStream(samplingPeriod: targetPeriod).listen((event) {
+      gyroscopeEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
         _gyroscopeAvailable = true;
         _latestGyro = event;
         _window.mark(_SensorKind.gyroscope);
@@ -57,7 +55,7 @@ class SensorService {
     );
 
     _subscriptions.add(
-      magnetometerEventStream(samplingPeriod: targetPeriod).listen((event) {
+      magnetometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
         _magnetometerAvailable = true;
         _latestMag = event;
         _window.mark(_SensorKind.magnetometer);
@@ -65,7 +63,7 @@ class SensorService {
     );
 
     _subscriptions.add(
-      barometerEventStream(samplingPeriod: targetPeriod).listen((event) {
+      barometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
         _barometerAvailable = true;
         _latestPressure = event.pressure;
         _window.mark(_SensorKind.barometer);
@@ -73,7 +71,7 @@ class SensorService {
     );
 
     _subscriptions.add(
-      accelerometerEventStream(samplingPeriod: targetPeriod).listen((event) {
+      accelerometerEventStream(samplingPeriod: SensorInterval.gameInterval).listen((event) {
         _accelerometerAvailable = true;
         _window.mark(_SensorKind.accelerometer);
         final gyro = _latestGyro;
