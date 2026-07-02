@@ -62,8 +62,9 @@ coverage/
 **/ios/Flutter/ephemeral/
 **/macos/Flutter/ephemeral/
 
-# Input data files for generating invite codes, which may contain sensitive participant IDs. These should not be committed to version control.
+# Input data files
 server/scripts/*.csv
+server/scripts/*.txt
 
 # Drift generated schema/build outputs can be committed intentionally if enabled.
 # Do not ignore drift_schemas/ by default.
