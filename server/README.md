@@ -72,5 +72,7 @@ directory, writes a sibling `.metadata.json` file from the DynamoDB row, and
 stores a `.download_checkpoint.json` file containing the latest downloaded
 `uploaded_at_ms`. Re-running the command downloads only rows with a newer
 `uploaded_at_ms`. Add `--decompress` to also write `.json` copies beside the
-gzipped payloads. The command prints aggregate counts and only includes
+gzipped payloads. The sync only downloads rows for `participant_001`,
+`participant_003`, and `participant_026`; participant IDs must use the
+`participant_###` format. The command prints aggregate counts and only includes
 per-session details for failed downloads.

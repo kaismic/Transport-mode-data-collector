@@ -1,6 +1,7 @@
 import argparse
 import gzip
 import json
+import re
 import shutil
 import sys
 from pathlib import Path, PurePosixPath
@@ -8,6 +9,14 @@ from pathlib import Path, PurePosixPath
 import boto3
 from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import MissingDependencyException
+
+
+SYNC_PARTICIPANT_IDS = (
+    "participant_001",
+    "participant_003",
+    "participant_026",
+)
+PARTICIPANT_ID_PATTERN = re.compile(r"^participant_\d{3}$")
 
 
 def main():
@@ -79,6 +88,8 @@ def main():
 
 
 def load_session(bucket, s3_key):
+    if not is_allowed_sync_s3_key(s3_key):
+        raise ValueError(f"S3 key is not for an allowed participant: {s3_key}")
     obj = boto3.client("s3").get_object(Bucket=bucket, Key=s3_key)
     raw = gzip.decompress(obj["Body"].read())
     return json.loads(raw)
@@ -153,12 +164,11 @@ def sync_new_sessions(
 def count_received_sessions(table):
     total = 0
     scan_kwargs = {
-        "FilterExpression": Attr("status").eq("received"),
-        "Select": "COUNT",
+        "FilterExpression": received_session_filter_expression(),
     }
     while True:
         response = table.scan(**scan_kwargs)
-        total += response.get("Count", 0)
+        total += len(allowed_sync_sessions(response.get("Items", [])))
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
             return total
@@ -166,7 +176,7 @@ def count_received_sessions(table):
 
 
 def list_received_sessions(table, uploaded_after_ms=None):
-    filter_expression = Attr("status").eq("received")
+    filter_expression = received_session_filter_expression()
     if uploaded_after_ms is not None:
         filter_expression = filter_expression & Attr("uploaded_at_ms").gt(
             uploaded_after_ms
@@ -176,11 +186,37 @@ def list_received_sessions(table, uploaded_after_ms=None):
     scan_kwargs = {"FilterExpression": filter_expression}
     while True:
         response = table.scan(**scan_kwargs)
-        items.extend(response.get("Items", []))
+        items.extend(allowed_sync_sessions(response.get("Items", [])))
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
             return items
         scan_kwargs["ExclusiveStartKey"] = last_key
+
+
+def received_session_filter_expression():
+    return Attr("status").eq("received") & Attr("participant_id").is_in(
+        SYNC_PARTICIPANT_IDS
+    )
+
+
+def allowed_sync_sessions(items):
+    return [item for item in items if is_allowed_sync_participant(item)]
+
+
+def is_allowed_sync_participant(item):
+    participant_id = item.get("participant_id")
+    return (
+        isinstance(participant_id, str)
+        and bool(PARTICIPANT_ID_PATTERN.fullmatch(participant_id))
+        and participant_id in SYNC_PARTICIPANT_IDS
+    )
+
+
+def is_allowed_sync_s3_key(s3_key):
+    parts = PurePosixPath(s3_key).parts
+    if len(parts) < 2 or parts[0] != "raw":
+        return False
+    return is_allowed_sync_participant({"participant_id": parts[1]})
 
 
 def download_session(s3, bucket, item, output_dir, decompress, overwrite):
