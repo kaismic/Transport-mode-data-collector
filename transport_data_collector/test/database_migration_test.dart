@@ -56,7 +56,7 @@ INSERT INTO sessions (
       ['session-id', 'device-id', 'car', 1000, '{}'],
     );
     oldDatabase.execute('PRAGMA user_version = 1');
-    oldDatabase.dispose();
+    oldDatabase.close();
 
     final database = AppDatabase.forTesting(NativeDatabase(file));
     final session = await database.sessionDao.getSession('session-id');

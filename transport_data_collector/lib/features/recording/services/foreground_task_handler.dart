@@ -83,7 +83,7 @@ class RecordingTaskHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp) async {
+  Future<void> onDestroy(DateTime timestamp, bool isTimeout) async {
     await _sampleSubscription?.cancel();
     await _flush();
     await _pendingManifestPersist.catchError((Object _) {});
