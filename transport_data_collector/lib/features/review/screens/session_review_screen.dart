@@ -526,20 +526,29 @@ class _MagnitudeChart extends StatelessWidget {
     if (chartSpots.isEmpty) {
       return const Center(child: Text('No samples recorded'));
     }
+
+    final useMinutes = maxSeconds > 60;
+    final displayScale = useMinutes ? maxSeconds / 60 : maxSeconds;
+    final convertedSpots = useMinutes
+        ? chartSpots.map((spot) => FlSpot(spot.x / 60, spot.y)).toList()
+        : chartSpots;
+    final convertedTrimStart = useMinutes ? trim.start / 60 : trim.start;
+    final convertedTrimEnd = useMinutes ? trim.end / 60 : trim.end;
+
     return LineChart(
       LineChartData(
         minX: 0,
-        maxX: maxSeconds,
+        maxX: displayScale,
         gridData: const FlGridData(show: true),
-        titlesData: const FlTitlesData(
-          topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-          rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+        titlesData: FlTitlesData(
+          topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           bottomTitles: AxisTitles(
-            axisNameWidget: Text('Time (seconds)'),
+            axisNameWidget: Text('Time (${useMinutes ? 'minutes' : 'seconds'})'),
             axisNameSize: 24,
-            sideTitles: SideTitles(showTitles: true, reservedSize: 32),
+            sideTitles: const SideTitles(showTitles: true, reservedSize: 32),
           ),
-          leftTitles: AxisTitles(
+          leftTitles: const AxisTitles(
             axisNameWidget: Text('Acceleration magnitude (m/s²)'),
             axisNameSize: 24,
             sideTitles: SideTitles(showTitles: true, reservedSize: 44),
@@ -548,12 +557,12 @@ class _MagnitudeChart extends StatelessWidget {
         extraLinesData: ExtraLinesData(
           verticalLines: [
             VerticalLine(
-              x: trim.start,
+              x: convertedTrimStart,
               color: Theme.of(context).colorScheme.secondary,
               strokeWidth: 2,
             ),
             VerticalLine(
-              x: trim.end,
+              x: convertedTrimEnd,
               color: Theme.of(context).colorScheme.tertiary,
               strokeWidth: 2,
             ),
@@ -561,7 +570,7 @@ class _MagnitudeChart extends StatelessWidget {
         ),
         lineBarsData: [
           LineChartBarData(
-            spots: chartSpots,
+            spots: convertedSpots,
             isCurved: false,
             barWidth: 2,
             dotData: const FlDotData(show: false),
