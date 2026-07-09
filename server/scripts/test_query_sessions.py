@@ -10,16 +10,18 @@ import query_sessions
 
 
 class QuerySessionsParticipantFilterTests(unittest.TestCase):
-    def test_allows_only_configured_three_digit_participant_ids(self):
+    def test_allows_supported_sync_participant_ids(self):
         allowed = [
             {"participant_id": "participant_001"},
-            {"participant_id": "participant_003"},
-            {"participant_id": "participant_026"},
+            {"participant_id": "participant_002"},
+            {"participant_id": "participant_008"},
         ]
         blocked = [
-            {"participant_id": "participant_002"},
+            {"participant_id": "test_001"},
             {"participant_id": "participant_26"},
-            {"participant_id": "participant_026_extra"},
+            {"participant_id": "../participant_001"},
+            {"participant_id": "participant/001"},
+            {"participant_id": ""},
             {"participant_id": None},
             {},
         ]
@@ -40,7 +42,7 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
                         },
                         {
                             "session_id": "blocked",
-                            "participant_id": "participant_002",
+                            "participant_id": "../participant_002",
                         },
                     ],
                     "LastEvaluatedKey": {"page": 1},
@@ -48,8 +50,12 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
                 {
                     "Items": [
                         {
+                            "session_id": "blocked-2",
+                            "participant_id": "test_001",
+                        },
+                        {
                             "session_id": "allowed-2",
-                            "participant_id": "participant_026",
+                            "participant_id": "participant_008",
                         }
                     ],
                 },
@@ -75,8 +81,8 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
                 },
                 {
                     "Items": [
-                        {"participant_id": "participant_003"},
-                        {"participant_id": "participant_026"},
+                        {"participant_id": "participant_008"},
+                        {"participant_id": "../participant_026"},
                     ],
                 },
             ]
@@ -84,13 +90,18 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
 
         self.assertEqual(query_sessions.count_received_sessions(table), 3)
 
-    def test_allows_only_configured_participant_s3_keys(self):
+    def test_allows_supported_raw_s3_keys(self):
         self.assertTrue(
             query_sessions.is_allowed_sync_s3_key(
-                "raw/participant_003/device/session.json.gz"
+                "raw/participant_008/device/session.json.gz"
             )
         )
         self.assertFalse(
+            query_sessions.is_allowed_sync_s3_key(
+                "raw/test_001/device/session.json.gz"
+            )
+        )
+        self.assertTrue(
             query_sessions.is_allowed_sync_s3_key(
                 "raw/participant_999/device/session.json.gz"
             )
@@ -105,6 +116,33 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
                 "exports/participant_003/session.json.gz"
             )
         )
+
+    def test_checkpoint_is_ignored_when_participant_filter_changed(self):
+        checkpoint = {
+            "last_uploaded_at_ms": 999,
+            "participant_id_pattern": r"^(?:participant|test)_\d{3}$",
+        }
+
+        self.assertEqual(query_sessions.checkpoint_uploaded_at_ms(checkpoint, None), 0)
+
+    def test_checkpoint_is_used_when_participant_filter_matches(self):
+        checkpoint = {
+            "last_uploaded_at_ms": 999,
+            "participant_id_pattern": query_sessions.SYNC_CHECKPOINT_FILTER,
+        }
+
+        self.assertEqual(
+            query_sessions.checkpoint_uploaded_at_ms(checkpoint, None),
+            999,
+        )
+
+    def test_since_ms_overrides_checkpoint_filter(self):
+        checkpoint = {
+            "last_uploaded_at_ms": 999,
+            "participant_id_pattern": r"^(?:participant|test)_\d{3}$",
+        }
+
+        self.assertEqual(query_sessions.checkpoint_uploaded_at_ms(checkpoint, 123), 123)
 
 
 class FakeTable:

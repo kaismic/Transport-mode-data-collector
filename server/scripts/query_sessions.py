@@ -11,12 +11,8 @@ from boto3.dynamodb.conditions import Attr
 from botocore.exceptions import MissingDependencyException
 
 
-SYNC_PARTICIPANT_IDS = (
-    "participant_001",
-    "participant_003",
-    "participant_026",
-)
 PARTICIPANT_ID_PATTERN = re.compile(r"^participant_\d{3}$")
+SYNC_CHECKPOINT_FILTER = PARTICIPANT_ID_PATTERN.pattern
 
 
 def main():
@@ -106,9 +102,7 @@ def sync_new_sessions(
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = read_checkpoint(checkpoint_file)
-    last_uploaded_at_ms = (
-        since_ms if since_ms is not None else checkpoint.get("last_uploaded_at_ms", 0)
-    )
+    last_uploaded_at_ms = checkpoint_uploaded_at_ms(checkpoint, since_ms)
 
     ddb_table = boto3.resource("dynamodb").Table(table)
     total_s3_session_count = count_received_sessions(ddb_table)
@@ -150,6 +144,7 @@ def sync_new_sessions(
                 "last_uploaded_at_ms": updated_checkpoint_ms,
                 "source_table": table,
                 "source_bucket": bucket,
+                "participant_id_pattern": SYNC_CHECKPOINT_FILTER,
             },
         )
 
@@ -194,9 +189,7 @@ def list_received_sessions(table, uploaded_after_ms=None):
 
 
 def received_session_filter_expression():
-    return Attr("status").eq("received") & Attr("participant_id").is_in(
-        SYNC_PARTICIPANT_IDS
-    )
+    return Attr("status").eq("received")
 
 
 def allowed_sync_sessions(items):
@@ -208,7 +201,6 @@ def is_allowed_sync_participant(item):
     return (
         isinstance(participant_id, str)
         and bool(PARTICIPANT_ID_PATTERN.fullmatch(participant_id))
-        and participant_id in SYNC_PARTICIPANT_IDS
     )
 
 
@@ -283,6 +275,14 @@ def write_checkpoint(path, data):
     tmp_path = path.with_name(f"{path.name}.tmp")
     tmp_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
     tmp_path.replace(path)
+
+
+def checkpoint_uploaded_at_ms(checkpoint, since_ms):
+    if since_ms is not None:
+        return since_ms
+    if checkpoint.get("participant_id_pattern") != SYNC_CHECKPOINT_FILTER:
+        return 0
+    return checkpoint.get("last_uploaded_at_ms", 0)
 
 
 def print_aws_dependency_error(exc):

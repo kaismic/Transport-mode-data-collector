@@ -94,7 +94,6 @@ The config also supports `"checkpoint-file"` and `"since-ms"` for checkpoint
 control. To download and print one payload directly, use `"download-s3-key"`
 instead of `"sync-new"`.
 
-The sync only downloads rows for `participant_001`, `participant_003`, and
-`participant_026`; participant IDs must use the `participant_###` format. The
-command prints aggregate counts and only includes per-session details for failed
-downloads.
+The sync downloads rows whose participant IDs use the `participant_###` format.
+Rows for `test_###` IDs are ignored. The command prints aggregate counts and
+only includes per-session details for failed downloads.
