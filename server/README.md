@@ -50,14 +50,29 @@ The Flutter client must send those exact headers when uploading.
 
 ## Download Uploaded Sessions
 
-Use `scripts/query_sessions.py` to sync newly received sessions from DynamoDB/S3:
+Use `scripts/download_sessions.py` to sync newly received sessions from
+DynamoDB/S3 using a JSON config file. By default, the script reads
+`scripts/session-download.json`:
 
 ```bash
-python scripts/query_sessions.py \
-  --bucket transport-data-sessions-123456789012 \
-  --table TransportSessions \
-  --sync-new \
-  --output-dir data/sessions
+python scripts/download_sessions.py
+```
+
+Example `scripts/session-download.json`:
+
+```json
+{
+  "bucket": "transport-data-sessions-123456789012",
+  "table": "TransportSessions",
+  "sync-new": true,
+  "output-dir": "data/sessions"
+}
+```
+
+You can pass another config path if needed:
+
+```bash
+python scripts/download_sessions.py scripts/session-download.json
 ```
 
 If your AWS profile uses the AWS login credential provider, install boto3's
@@ -71,8 +86,15 @@ The sync writes each uploaded `raw/.../*.json.gz` payload under the output
 directory, writes a sibling `.metadata.json` file from the DynamoDB row, and
 stores a `.download_checkpoint.json` file containing the latest downloaded
 `uploaded_at_ms`. Re-running the command downloads only rows with a newer
-`uploaded_at_ms`. Add `--decompress` to also write `.json` copies beside the
-gzipped payloads. The sync only downloads rows for `participant_001`,
-`participant_003`, and `participant_026`; participant IDs must use the
-`participant_###` format. The command prints aggregate counts and only includes
-per-session details for failed downloads.
+`uploaded_at_ms`. Set `"decompress": true` to also write `.json` copies beside
+the gzipped payloads, and set `"overwrite": true` to redownload payloads that
+already exist locally.
+
+The config also supports `"checkpoint-file"` and `"since-ms"` for checkpoint
+control. To download and print one payload directly, use `"download-s3-key"`
+instead of `"sync-new"`.
+
+The sync only downloads rows for `participant_001`, `participant_003`, and
+`participant_026`; participant IDs must use the `participant_###` format. The
+command prints aggregate counts and only includes per-session details for failed
+downloads.
