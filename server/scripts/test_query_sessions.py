@@ -90,6 +90,67 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
 
         self.assertEqual(query_sessions.count_received_sessions(table), 3)
 
+    def test_list_participant_upload_stats_counts_and_tracks_latest_upload(self):
+        table = FakeTable(
+            [
+                {
+                    "Items": [
+                        {
+                            "session_id": "session-older",
+                            "participant_id": "participant_002",
+                            "uploaded_at_ms": 1000,
+                            "s3_key": "raw/participant_002/device/older.json.gz",
+                        },
+                        {
+                            "session_id": "session-blocked",
+                            "participant_id": "test_001",
+                            "uploaded_at_ms": 3000,
+                            "s3_key": "raw/test_001/device/session.json.gz",
+                        },
+                        {
+                            "session_id": "session-latest",
+                            "participant_id": "participant_002",
+                            "uploaded_at_ms": 2000,
+                            "s3_key": "raw/participant_002/device/latest.json.gz",
+                        },
+                        {
+                            "session_id": "session-other",
+                            "participant_id": "participant_001",
+                            "uploaded_at_ms": 1500,
+                            "s3_key": "raw/participant_001/device/session.json.gz",
+                        },
+                    ],
+                },
+            ]
+        )
+
+        stats = query_sessions.list_participant_upload_stats(table)
+
+        self.assertEqual(
+            stats,
+            {
+                "total_participant_count": 2,
+                "participants": [
+                    {
+                        "participant_id": "participant_001",
+                        "total_upload_count": 1,
+                        "last_session_id": "session-other",
+                        "last_s3_key": "raw/participant_001/device/session.json.gz",
+                        "last_uploaded_at_ms": 1500,
+                        "last_uploaded_at": "1970-01-01T00:00:01.500000+00:00",
+                    },
+                    {
+                        "participant_id": "participant_002",
+                        "total_upload_count": 2,
+                        "last_session_id": "session-latest",
+                        "last_s3_key": "raw/participant_002/device/latest.json.gz",
+                        "last_uploaded_at_ms": 2000,
+                        "last_uploaded_at": "1970-01-01T00:00:02+00:00",
+                    },
+                ],
+            },
+        )
+
     def test_allows_supported_raw_s3_keys(self):
         self.assertTrue(
             query_sessions.is_allowed_sync_s3_key(

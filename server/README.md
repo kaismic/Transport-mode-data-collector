@@ -97,3 +97,14 @@ instead of `"sync-new"`.
 The sync downloads rows whose participant IDs use the `participant_###` format.
 Rows for `test_###` IDs are ignored. The command prints aggregate counts and
 only includes per-session details for failed downloads.
+
+To inspect upload coverage without downloading payloads, list participant
+upload stats from DynamoDB:
+
+```bash
+python scripts/query_sessions.py --table TransportSessions --participant-stats
+```
+
+The stats output includes the total number of `participant_###` participants
+with at least one received session, each participant's upload count, and their
+latest session ID, S3 key, `uploaded_at_ms`, and UTC upload timestamp.

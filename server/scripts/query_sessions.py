@@ -4,6 +4,7 @@ import json
 import re
 import shutil
 import sys
+from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import boto3
@@ -17,9 +18,17 @@ SYNC_CHECKPOINT_FILTER = PARTICIPANT_ID_PATTERN.pattern
 
 def main():
     parser = argparse.ArgumentParser(description="List or download received sessions.")
-    parser.add_argument("--bucket", required=True)
+    parser.add_argument("--bucket")
     parser.add_argument("--table", default="TransportSessions")
     parser.add_argument("--download-s3-key")
+    parser.add_argument(
+        "--participant-stats",
+        action="store_true",
+        help=(
+            "List upload counts and latest upload details for participants with "
+            "at least one received session."
+        ),
+    )
     parser.add_argument(
         "--sync-new",
         action="store_true",
@@ -55,11 +64,13 @@ def main():
     args = parser.parse_args()
 
     if args.download_s3_key:
+        require_bucket(args.bucket)
         session = load_session(args.bucket, args.download_s3_key)
         print(json.dumps(session, indent=2))
         return
 
     if args.sync_new:
+        require_bucket(args.bucket)
         output_dir = Path(args.output_dir)
         checkpoint_file = (
             Path(args.checkpoint_file)
@@ -79,8 +90,18 @@ def main():
         return
 
     ddb = boto3.resource("dynamodb").Table(args.table)
+    if args.participant_stats:
+        stats = list_participant_upload_stats(ddb)
+        print(json.dumps(stats, indent=2, default=str))
+        return
+
     items = list_received_sessions(ddb)
     print(json.dumps(items, indent=2, default=str))
+
+
+def require_bucket(bucket):
+    if not bucket:
+        raise ValueError("--bucket is required for this operation")
 
 
 def load_session(bucket, s3_key):
@@ -168,6 +189,48 @@ def count_received_sessions(table):
         if not last_key:
             return total
         scan_kwargs["ExclusiveStartKey"] = last_key
+
+
+def list_participant_upload_stats(table):
+    sessions = list_received_sessions(table)
+    participants = {}
+
+    for item in sessions:
+        participant_id = item["participant_id"]
+        uploaded_at_ms = int(item["uploaded_at_ms"])
+        participant = participants.setdefault(
+            participant_id,
+            {
+                "participant_id": participant_id,
+                "total_upload_count": 0,
+                "last_session_id": None,
+                "last_s3_key": None,
+                "last_uploaded_at_ms": None,
+                "last_uploaded_at": None,
+            },
+        )
+
+        participant["total_upload_count"] += 1
+        if (
+            participant["last_uploaded_at_ms"] is None
+            or uploaded_at_ms > participant["last_uploaded_at_ms"]
+        ):
+            participant["last_session_id"] = item.get("session_id")
+            participant["last_s3_key"] = item.get("s3_key")
+            participant["last_uploaded_at_ms"] = uploaded_at_ms
+            participant["last_uploaded_at"] = uploaded_at_iso(uploaded_at_ms)
+
+    return {
+        "total_participant_count": len(participants),
+        "participants": [
+            participants[participant_id]
+            for participant_id in sorted(participants)
+        ],
+    }
+
+
+def uploaded_at_iso(uploaded_at_ms):
+    return datetime.fromtimestamp(uploaded_at_ms / 1000, tz=timezone.utc).isoformat()
 
 
 def list_received_sessions(table, uploaded_after_ms=None):
