@@ -29,10 +29,6 @@ samconfig.toml
 packaged.yaml
 template.packaged.yaml
 
-# Local test payloads
-test_payload.json
-test_payload.json.gz
-
 # Flutter / Dart
 .dart_tool/
 .flutter-plugins
@@ -65,6 +61,7 @@ coverage/
 # Input data files
 server/scripts/*.csv
 server/scripts/*.txt
+server/scripts/*.json
 
 # Drift generated schema/build outputs can be committed intentionally if enabled.
 # Do not ignore drift_schemas/ by default.
