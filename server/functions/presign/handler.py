@@ -22,7 +22,7 @@ sessions_table = dynamodb.Table(os.environ["SESSIONS_TABLE_NAME"])
 invite_codes_table = dynamodb.Table(os.environ["INVITE_CODES_TABLE_NAME"])
 
 BUCKET_NAME = os.environ["BUCKET_NAME"]
-ALLOWED_VEHICLE_TYPES = {"car", "bus", "train"}
+ALLOWED_VEHICLE_TYPES = {"car", "bus", "train", "metro", "tram"}
 ALLOWED_PHONE_POSITIONS = {"hand", "pocket", "bag", "stationary", "other"}
 UUID_RE = re.compile(r"^[0-9a-fA-F-]{32,36}$")
 MAX_SAMPLE_COUNT = 2_000_000
@@ -126,10 +126,10 @@ def _validate_body(body):
     phone_position = _string(body, "phone_position")
     invite_code = _string(body, "invite_code").strip().upper()
     if vehicle_type not in ALLOWED_VEHICLE_TYPES:
-        raise ValidationError("vehicle_type must be one of: car, bus, train")
+        raise ValidationError(f"vehicle_type must be one of: {', '.join(ALLOWED_VEHICLE_TYPES)}")
     if phone_position not in ALLOWED_PHONE_POSITIONS:
         raise ValidationError(
-            "phone_position must be one of: hand, pocket, bag, stationary, other"
+            f"phone_position must be one of: {', '.join(ALLOWED_PHONE_POSITIONS)}"
         )
     if not UUID_RE.match(session_id):
         raise ValidationError("session_id must be a UUID-like string")
