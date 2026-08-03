@@ -8,12 +8,15 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Key
 from botocore.exceptions import MissingDependencyException
 
 
 PARTICIPANT_ID_PATTERN = re.compile(r"^participant_\d{3}$")
 SYNC_CHECKPOINT_FILTER = PARTICIPANT_ID_PATTERN.pattern
+SYNC_INDEX_NAME = "received-sync-index"
+SYNC_PARTITION = "received"
+SYNC_CHECKPOINT_VERSION = 2
 
 
 def main():
@@ -49,7 +52,7 @@ def main():
     parser.add_argument(
         "--since-ms",
         type=int,
-        help="Override the checkpoint timestamp for this sync run.",
+        help="Override the checkpoint with a server confirmation timestamp.",
     )
     parser.add_argument(
         "--decompress",
@@ -123,15 +126,19 @@ def sync_new_sessions(
 ):
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint = read_checkpoint(checkpoint_file)
-    last_uploaded_at_ms = checkpoint_uploaded_at_ms(checkpoint, since_ms)
+    last_sync_key = checkpoint_sync_key(
+        checkpoint,
+        since_ms,
+        source_table=table,
+        source_bucket=bucket,
+    )
 
     ddb_table = boto3.resource("dynamodb").Table(table)
-    total_s3_session_count = count_received_sessions(ddb_table)
-    new_sessions = list_received_sessions(
+    discovered_sessions = query_received_sessions(
         ddb_table,
-        uploaded_after_ms=last_uploaded_at_ms,
+        after_sync_key=last_sync_key,
     )
-    new_sessions.sort(key=lambda item: int(item["uploaded_at_ms"]))
+    new_sessions = allowed_sync_sessions(discovered_sessions)
 
     s3 = boto3.client("s3")
     downloaded = []
@@ -157,20 +164,22 @@ def sync_new_sessions(
                 }
             )
 
-    if new_sessions and not failures:
-        updated_checkpoint_ms = max(int(item["uploaded_at_ms"]) for item in new_sessions)
+    if discovered_sessions and not failures:
+        updated_sync_key = discovered_sessions[-1]["sync_key"]
         write_checkpoint(
             checkpoint_file,
             {
-                "last_uploaded_at_ms": updated_checkpoint_ms,
+                "version": SYNC_CHECKPOINT_VERSION,
+                "last_sync_key": updated_sync_key,
                 "source_table": table,
                 "source_bucket": bucket,
                 "participant_id_pattern": SYNC_CHECKPOINT_FILTER,
+                "source_index": SYNC_INDEX_NAME,
             },
         )
 
     return {
-        "total_s3_session_count": total_s3_session_count,
+        "total_discovered_count": len(new_sessions),
         "total_downloaded_count": len(downloaded),
         "total_download_failure_count": len(failures),
         "failed_downloads": failures,
@@ -178,17 +187,7 @@ def sync_new_sessions(
 
 
 def count_received_sessions(table):
-    total = 0
-    scan_kwargs = {
-        "FilterExpression": received_session_filter_expression(),
-    }
-    while True:
-        response = table.scan(**scan_kwargs)
-        total += len(allowed_sync_sessions(response.get("Items", [])))
-        last_key = response.get("LastEvaluatedKey")
-        if not last_key:
-            return total
-        scan_kwargs["ExclusiveStartKey"] = last_key
+    return len(list_received_sessions(table))
 
 
 def list_participant_upload_stats(table):
@@ -233,26 +232,28 @@ def uploaded_at_iso(uploaded_at_ms):
     return datetime.fromtimestamp(uploaded_at_ms / 1000, tz=timezone.utc).isoformat()
 
 
-def list_received_sessions(table, uploaded_after_ms=None):
-    filter_expression = received_session_filter_expression()
-    if uploaded_after_ms is not None:
-        filter_expression = filter_expression & Attr("uploaded_at_ms").gt(
-            uploaded_after_ms
-        )
+def list_received_sessions(table, after_sync_key=None):
+    return allowed_sync_sessions(
+        query_received_sessions(table, after_sync_key=after_sync_key)
+    )
 
+
+def query_received_sessions(table, after_sync_key=None):
     items = []
-    scan_kwargs = {"FilterExpression": filter_expression}
+    key_condition = Key("sync_partition").eq(SYNC_PARTITION)
+    if after_sync_key:
+        key_condition = key_condition & Key("sync_key").gt(after_sync_key)
+    query_kwargs = {
+        "IndexName": SYNC_INDEX_NAME,
+        "KeyConditionExpression": key_condition,
+    }
     while True:
-        response = table.scan(**scan_kwargs)
-        items.extend(allowed_sync_sessions(response.get("Items", [])))
+        response = table.query(**query_kwargs)
+        items.extend(response.get("Items", []))
         last_key = response.get("LastEvaluatedKey")
         if not last_key:
             return items
-        scan_kwargs["ExclusiveStartKey"] = last_key
-
-
-def received_session_filter_expression():
-    return Attr("status").eq("received")
+        query_kwargs["ExclusiveStartKey"] = last_key
 
 
 def allowed_sync_sessions(items):
@@ -327,9 +328,10 @@ def read_checkpoint(path):
         return {}
     with path.open("r", encoding="utf-8") as f:
         data = json.load(f)
-    value = data.get("last_uploaded_at_ms", 0)
-    if not isinstance(value, int) or value < 0:
-        raise ValueError(f"Invalid checkpoint value in {path}")
+    if data.get("version") == SYNC_CHECKPOINT_VERSION:
+        value = data.get("last_sync_key", "")
+        if not isinstance(value, str):
+            raise ValueError(f"Invalid checkpoint value in {path}")
     return data
 
 
@@ -340,12 +342,27 @@ def write_checkpoint(path, data):
     tmp_path.replace(path)
 
 
-def checkpoint_uploaded_at_ms(checkpoint, since_ms):
+def checkpoint_sync_key(
+    checkpoint,
+    since_ms,
+    source_table=None,
+    source_bucket=None,
+):
     if since_ms is not None:
-        return since_ms
+        if since_ms < 0:
+            raise ValueError("since-ms must not be negative")
+        return f"{since_ms:013d}#"
+    if checkpoint.get("version") != SYNC_CHECKPOINT_VERSION:
+        return ""
     if checkpoint.get("participant_id_pattern") != SYNC_CHECKPOINT_FILTER:
-        return 0
-    return checkpoint.get("last_uploaded_at_ms", 0)
+        return ""
+    if checkpoint.get("source_index") != SYNC_INDEX_NAME:
+        return ""
+    if source_table is not None and checkpoint.get("source_table") != source_table:
+        return ""
+    if source_bucket is not None and checkpoint.get("source_bucket") != source_bucket:
+        return ""
+    return checkpoint.get("last_sync_key", "")
 
 
 def print_aws_dependency_error(exc):

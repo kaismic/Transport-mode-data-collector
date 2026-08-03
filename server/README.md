@@ -12,6 +12,8 @@ AWS SAM backend for invite-only uploads from the Flutter data collector app.
   - Returns a presigned S3 `PUT` URL.
 - `POST /sessions/confirm-upload`
   - Marks a pending session as received after the app successfully uploads to S3.
+  - Adds a server-generated confirmation timestamp and collision-safe ordered
+    synchronization key.
 
 ## Deploy
 
@@ -20,6 +22,18 @@ cd server
 sam build
 sam deploy --guided
 ```
+
+The deployment adds the `received-sync-index` global secondary index. After the
+first deployment of this version, backfill existing received rows once:
+
+```bash
+python scripts/backfill_session_sync_keys.py --table TransportSessions --dry-run
+python scripts/backfill_session_sync_keys.py --table TransportSessions
+```
+
+Run the dry run first and confirm the examined/updated counts. The backfill uses
+`confirmed_at`, then `updated_at`, then `uploaded_at_ms` as its timestamp source.
+It is idempotent because rows that already have `sync_key` are excluded.
 
 After deploy, pass the `ApiBaseUrl` output to Flutter:
 
@@ -85,14 +99,16 @@ python -m pip install "botocore[crt]"
 The sync writes each uploaded `raw/.../*.json.gz` payload under the output
 directory, writes a sibling `.metadata.json` file from the DynamoDB row, and
 stores a `.download_checkpoint.json` file containing the latest downloaded
-`uploaded_at_ms`. Re-running the command downloads only rows with a newer
-`uploaded_at_ms`. Set `"decompress": true` to also write `.json` copies beside
-the gzipped payloads, and set `"overwrite": true` to redownload payloads that
-already exist locally.
+server confirmation cursor. Re-running the command queries
+`received-sync-index` for later rows instead of scanning the table. Set
+`"decompress": true` to also write `.json` copies beside the gzipped payloads,
+and set `"overwrite": true` to redownload payloads that already exist locally.
 
 The config also supports `"checkpoint-file"` and `"since-ms"` for checkpoint
-control. To download and print one payload directly, use `"download-s3-key"`
-instead of `"sync-new"`.
+control. `since-ms` now refers to the server confirmation timestamp. Legacy
+`uploaded_at_ms` checkpoints are deliberately ignored once so the ordered index
+can be synchronized completely. To download and print one payload directly,
+use `"download-s3-key"` instead of `"sync-new"`.
 
 The sync downloads rows whose participant IDs use the `participant_###` format.
 Rows for `test_###` IDs are ignored. The command prints aggregate counts and

@@ -19,11 +19,18 @@ def handler(event, context):
         return _response(400, {"message": str(exc)})
 
     try:
-        now_iso = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(timezone.utc)
+        now_iso = now.isoformat()
+        confirmed_at_ms = int(now.timestamp() * 1000)
+        sync_key = f"{confirmed_at_ms:013d}#{session_id}"
         result = sessions_table.update_item(
             Key={"session_id": session_id},
             UpdateExpression=(
-                "SET #status = :received, confirmed_at = :confirmed_at, "
+                "SET #status = :received, "
+                "confirmed_at = if_not_exists(confirmed_at, :confirmed_at), "
+                "confirmed_at_ms = if_not_exists(confirmed_at_ms, :confirmed_at_ms), "
+                "sync_partition = if_not_exists(sync_partition, :sync_partition), "
+                "sync_key = if_not_exists(sync_key, :sync_key), "
                 "updated_at = :updated_at"
             ),
             ConditionExpression=(
@@ -33,6 +40,9 @@ def handler(event, context):
             ExpressionAttributeValues={
                 ":received": "received",
                 ":confirmed_at": now_iso,
+                ":confirmed_at_ms": confirmed_at_ms,
+                ":sync_partition": "received",
+                ":sync_key": sync_key,
                 ":updated_at": now_iso,
                 ":uploaded_at_ms": uploaded_at_ms,
             },

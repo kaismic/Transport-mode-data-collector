@@ -40,6 +40,10 @@ Resources:
           AttributeType: S
         - AttributeName: uploaded_at_ms
           AttributeType: N
+        - AttributeName: sync_partition
+          AttributeType: S
+        - AttributeName: sync_key
+          AttributeType: S
       KeySchema:
         - AttributeName: session_id
           KeyType: HASH
@@ -49,6 +53,14 @@ Resources:
             - AttributeName: participant_id
               KeyType: HASH
             - AttributeName: uploaded_at_ms
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: received-sync-index
+          KeySchema:
+            - AttributeName: sync_partition
+              KeyType: HASH
+            - AttributeName: sync_key
               KeyType: RANGE
           Projection:
             ProjectionType: ALL

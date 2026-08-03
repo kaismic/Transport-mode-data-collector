@@ -31,7 +31,7 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
             allowed,
         )
 
-    def test_list_received_sessions_filters_each_scan_page(self):
+    def test_list_received_sessions_filters_each_query_page(self):
         table = FakeTable(
             [
                 {
@@ -178,23 +178,25 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
             )
         )
 
-    def test_checkpoint_is_ignored_when_participant_filter_changed(self):
+    def test_legacy_checkpoint_is_ignored(self):
         checkpoint = {
             "last_uploaded_at_ms": 999,
             "participant_id_pattern": r"^(?:participant|test)_\d{3}$",
         }
 
-        self.assertEqual(query_sessions.checkpoint_uploaded_at_ms(checkpoint, None), 0)
+        self.assertEqual(query_sessions.checkpoint_sync_key(checkpoint, None), "")
 
     def test_checkpoint_is_used_when_participant_filter_matches(self):
         checkpoint = {
-            "last_uploaded_at_ms": 999,
+            "version": query_sessions.SYNC_CHECKPOINT_VERSION,
+            "last_sync_key": "0000000000999#session-1",
             "participant_id_pattern": query_sessions.SYNC_CHECKPOINT_FILTER,
+            "source_index": query_sessions.SYNC_INDEX_NAME,
         }
 
         self.assertEqual(
-            query_sessions.checkpoint_uploaded_at_ms(checkpoint, None),
-            999,
+            query_sessions.checkpoint_sync_key(checkpoint, None),
+            "0000000000999#session-1",
         )
 
     def test_since_ms_overrides_checkpoint_filter(self):
@@ -203,7 +205,26 @@ class QuerySessionsParticipantFilterTests(unittest.TestCase):
             "participant_id_pattern": r"^(?:participant|test)_\d{3}$",
         }
 
-        self.assertEqual(query_sessions.checkpoint_uploaded_at_ms(checkpoint, 123), 123)
+        self.assertEqual(
+            query_sessions.checkpoint_sync_key(checkpoint, 123),
+            "0000000000123#",
+        )
+
+    def test_checkpoint_is_ignored_for_another_table(self):
+        checkpoint = {
+            "version": query_sessions.SYNC_CHECKPOINT_VERSION,
+            "last_sync_key": "0000000000999#session-1",
+            "participant_id_pattern": query_sessions.SYNC_CHECKPOINT_FILTER,
+            "source_index": query_sessions.SYNC_INDEX_NAME,
+            "source_table": "OldSessions",
+        }
+
+        self.assertEqual(
+            query_sessions.checkpoint_sync_key(
+                checkpoint, None, source_table="NewSessions"
+            ),
+            "",
+        )
 
 
 class FakeTable:
@@ -211,7 +232,7 @@ class FakeTable:
         self.pages = pages
         self.calls = 0
 
-    def scan(self, **kwargs):
+    def query(self, **kwargs):
         self.calls += 1
         return self.pages[self.calls - 1]
 
