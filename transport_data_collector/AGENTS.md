@@ -1,0 +1,1 @@
+Increment app version number in `pubspec.yaml` and other related files when the app project code is updated.
