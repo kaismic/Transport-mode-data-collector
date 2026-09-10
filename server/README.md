@@ -45,6 +45,17 @@ flutter run --dart-define=API_BASE_URL=https://xxxx.execute-api.ap-southeast-2.a
 
 Invite codes are not stored directly. The presign Lambda hashes the submitted code with SHA-256 and looks up that hash in the `TransportInviteCodes` table.
 
+The lookup uses a strongly consistent read so newly created or activated codes
+are immediately usable and revoked codes are rejected. Invalid/inactive codes
+return HTTP 403 with `code: INVALID_INVITE_CODE` and a readable `message`.
+Deploy the updated presign Lambda for this behavior to take effect.
+
+Run the presign regression tests with:
+
+```bash
+python -m unittest discover -s functions/presign -p "test_*.py"
+```
+
 Create a code with:
 
 ```bash

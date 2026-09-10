@@ -9,8 +9,9 @@ import '../models/upload_payload.dart';
 const _apiBaseUrl = String.fromEnvironment('API_BASE_URL', defaultValue: '');
 
 class UploadService {
-  UploadService({Dio? api, Dio? s3})
-    : _hasConfiguredApiBaseUrl =
+  UploadService({Dio? api, Dio? s3, Future<void> Function(Duration)? delay})
+    : _delay = delay ?? Future<void>.delayed,
+      _hasConfiguredApiBaseUrl =
           api != null ||
           (_apiBaseUrl.isNotEmpty && !_apiBaseUrl.contains('xxxx')),
       _api =
@@ -35,6 +36,7 @@ class UploadService {
   final Dio _api;
   final Dio _s3;
   final bool _hasConfiguredApiBaseUrl;
+  final Future<void> Function(Duration) _delay;
 
   Future<void> uploadSession({
     required UploadPayload payload,
@@ -78,39 +80,80 @@ class UploadService {
       );
     }
 
-    try {
-      final response = await _api.post<Map<String, dynamic>>(
-        '/sessions/request-upload',
-        data: {
-          'invite_code': inviteCode,
-          'session_id': payload.sessionId,
-          'device_uuid': payload.deviceUuid,
-          'vehicle_type': payload.vehicleType,
-          'phone_position': payload.phonePosition,
-          'started_at_ms': payload.startedAtMs,
-          'stopped_at_ms': payload.stoppedAtMs,
-          'trimmed_start_ms': payload.trimmedStartMs,
-          'trimmed_end_ms': payload.trimmedEndMs,
-          'uploaded_at_ms': payload.uploadedAtMs,
-          'collection_version': payload.collectionVersion,
-          'app_version': payload.appVersion,
-          'schema_version': payload.schemaVersion,
-          'sensor_manifest': jsonDecode(payload.sensorManifest),
-          'sample_count': payload.samples.length,
-        },
-      );
-      final url = response.data?['presigned_url'];
-      if (url is! String || url.isEmpty) {
-        throw const PresignRequestException('API did not return a upload URL.');
+    for (var attempt = 0; ; attempt++) {
+      try {
+        final response = await _api.post<Map<String, dynamic>>(
+          '/sessions/request-upload',
+          data: {
+            'invite_code': inviteCode.trim().toUpperCase(),
+            'session_id': payload.sessionId,
+            'device_uuid': payload.deviceUuid,
+            'vehicle_type': payload.vehicleType,
+            'phone_position': payload.phonePosition,
+            'started_at_ms': payload.startedAtMs,
+            'stopped_at_ms': payload.stoppedAtMs,
+            'trimmed_start_ms': payload.trimmedStartMs,
+            'trimmed_end_ms': payload.trimmedEndMs,
+            'uploaded_at_ms': payload.uploadedAtMs,
+            'collection_version': payload.collectionVersion,
+            'app_version': payload.appVersion,
+            'schema_version': payload.schemaVersion,
+            'sensor_manifest': jsonDecode(payload.sensorManifest),
+            'sample_count': payload.samples.length,
+          },
+        );
+        final url = response.data?['presigned_url'];
+        if (url is! String || url.isEmpty) {
+          throw const PresignRequestException(
+            'API did not return an upload URL.',
+          );
+        }
+        return url;
+      } on PresignRequestException {
+        rethrow;
+      } on DioException catch (error) {
+        final body = _errorBody(error);
+        final message = body['message'] ?? body['Message'];
+        if (body['code'] == 'INVALID_INVITE_CODE' ||
+            message == 'Invalid or inactive invite code') {
+          throw const PresignRequestException(
+            'Your invite code is invalid or inactive. Change it from the home '
+            'screen or contact the study coordinator.',
+          );
+        }
+        if (message == 'Missing Authentication Token') {
+          throw const PresignRequestException(
+            'The upload API address is incorrect. Contact the study coordinator.',
+          );
+        }
+        // Retry only rejected presign requests. Timeouts/server errors can
+        // occur after a pending row was written and are not safe to replay.
+        if (error.response?.statusCode == 403 && attempt < 3) {
+          await _delay(Duration(seconds: 1 << attempt));
+          continue;
+        }
+        final status = error.response?.statusCode;
+        final detail = message is String && message.trim().isNotEmpty
+            ? message.trim()
+            : 'Check your connection and try again.';
+        throw PresignRequestException(
+          'Could not start upload${status == null ? '' : ' (HTTP $status)'}: '
+          '$detail',
+        );
       }
-      return url;
-    } on PresignRequestException {
-      rethrow;
-    } on DioException catch (error) {
-      throw PresignRequestException(
-        'Failed to get presigned URL: ${error.message}',
-      );
     }
+  }
+
+  Map<dynamic, dynamic> _errorBody(DioException error) {
+    var data = error.response?.data;
+    if (data is String) {
+      try {
+        data = jsonDecode(data);
+      } on FormatException {
+        return const {};
+      }
+    }
+    return data is Map ? data : const {};
   }
 
   Future<void> _putToS3(String presignedUrl, UploadPayload payload) async {

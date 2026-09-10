@@ -34,7 +34,10 @@ def handler(event, context):
         payload = _validate_body(body)
         invite = _lookup_invite(payload["invite_code"])
         if not invite:
-            return _response(403, {"message": "Invalid or inactive invite code"})
+            return _response(403, {
+                "code": "INVALID_INVITE_CODE",
+                "message": "Invalid or inactive invite code",
+            })
 
         participant_id = invite["participant_id"]
         s3_key = (
@@ -176,7 +179,10 @@ def _validate_body(body):
 
 def _lookup_invite(invite_code):
     code_hash = hashlib.sha256(invite_code.encode("utf-8")).hexdigest()
-    item = invite_codes_table.get_item(Key={"code_hash": code_hash}).get("Item")
+    # Authorization must see newly created/activated codes and revocations.
+    item = invite_codes_table.get_item(
+        Key={"code_hash": code_hash}, ConsistentRead=True
+    ).get("Item")
     if not item or not item.get("active", False):
         return None
     return item

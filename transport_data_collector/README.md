@@ -98,6 +98,22 @@ than assuming Android behavior.
 
 ## Validation
 
+### Upload failures
+
+The app automatically retries generic HTTP 403 responses when requesting an
+upload URL, with waits of 1, 2, and 4 seconds (four attempts total). It uploads
+the file and confirms the session only after obtaining a URL. Explicit invalid
+or inactive invite codes and incorrect API routes fail immediately with guidance
+instead of Dio's lengthy diagnostic text. Change an invalid invite code using
+the home screen's **Change invite code** action.
+
+Other HTTP failures and timeouts are not automatically replayed: the server may
+already have created the pending session. Error messages include the HTTP status
+and the API's message when available. Deploy the server's strongly consistent
+invite lookup as well as rebuilding the app to include the complete fix.
+
+### Checks
+
 Run the platform-independent checks on any development machine:
 
 ```shell
