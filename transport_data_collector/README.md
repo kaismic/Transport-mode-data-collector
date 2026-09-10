@@ -3,6 +3,16 @@
 Flutter application for recording phone sensor data, reviewing sessions, and
 uploading approved data to the TCCT API.
 
+## Current release
+
+Version `1.0.4+5` (build 5) adds automatic retries for generic upload-URL HTTP
+403 failures and actionable messages for invalid invite codes and API errors.
+The companion backend fix uses strongly consistent invite-code reads.
+
+`pubspec.yaml` is the source of the app version and build number. Android and
+iOS inherit these values through Flutter's build settings, and session uploads
+report the version from the installed app's package metadata.
+
 ## Local configuration
 
 Development builds read compile-time values from `config/dev.env`:
