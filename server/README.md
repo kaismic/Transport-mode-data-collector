@@ -8,6 +8,9 @@ AWS SAM backend for invite-only uploads from the Flutter data collector app.
   - Validates an invite code.
   - Validates the phone position (`hand`, `pocket`, `bag`, `stationary`, or
     `other`).
+  - Requires a positive integer `sample_count`, without a fixed sample-count
+    ceiling. Long recordings can exceed two million samples; only metadata
+    passes through this endpoint, and the sample payload uploads directly to S3.
   - Writes a pending session metadata row to DynamoDB.
   - Returns a presigned S3 `PUT` URL.
 - `POST /sessions/confirm-upload`
@@ -22,6 +25,11 @@ cd server
 sam build
 sam deploy --guided
 ```
+
+Deploy the updated presign Lambda to remove the former 2,000,000-sample upload
+rejection. Existing app installations can then retry affected sessions without
+trimming away data or updating the app. Requests rejected by this validation
+did not create a pending session row.
 
 The deployment adds the `received-sync-index` global secondary index. After the
 first deployment of this version, backfill existing received rows once:

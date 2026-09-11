@@ -39,6 +39,53 @@ class HandlerValidationTest(unittest.TestCase):
         ):
             self.handler._validate_body(_valid_body("dashboard"))
 
+    def test_large_sessions_receive_upload_url_and_preserve_sample_count(self):
+        for sample_count in (2_000_000, 2_000_001, 2_541_059, 10_000_000):
+            with (
+                self.subTest(sample_count=sample_count),
+                patch.object(self.handler, "invite_codes_table") as codes,
+                patch.object(self.handler, "sessions_table") as sessions,
+                patch.object(self.handler, "s3") as s3,
+            ):
+                codes.get_item.return_value = {
+                    "Item": {"participant_id": "participant_001", "active": True}
+                }
+                s3.generate_presigned_url.return_value = "https://example.com/upload"
+                body = _valid_body("pocket")
+                body["sample_count"] = sample_count
+
+                response = self.handler.handler({"body": json.dumps(body)}, None)
+
+                self.assertEqual(response["statusCode"], 200)
+                self.assertEqual(
+                    json.loads(response["body"])["presigned_url"],
+                    "https://example.com/upload",
+                )
+                sessions.put_item.assert_called_once()
+                self.assertEqual(
+                    sessions.put_item.call_args.kwargs["Item"]["sample_count"],
+                    sample_count,
+                )
+
+    def test_invalid_sample_counts_never_issue_upload_url(self):
+        for sample_count in (0, -1, True, False, 1.5, "2541059", None):
+            with (
+                self.subTest(sample_count=sample_count),
+                patch.object(self.handler, "invite_codes_table") as codes,
+                patch.object(self.handler, "sessions_table") as sessions,
+                patch.object(self.handler, "s3") as s3,
+            ):
+                body = _valid_body("pocket")
+                body["sample_count"] = sample_count
+
+                response = self.handler.handler({"body": json.dumps(body)}, None)
+
+                self.assertEqual(response["statusCode"], 400)
+                self.assertIn("sample_count", json.loads(response["body"])["message"])
+                codes.get_item.assert_not_called()
+                s3.generate_presigned_url.assert_not_called()
+                sessions.put_item.assert_not_called()
+
     def test_first_upload_sees_newly_activated_invite(self):
         invite = {"participant_id": "participant_001", "active": True}
 

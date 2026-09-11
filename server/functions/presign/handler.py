@@ -25,7 +25,6 @@ BUCKET_NAME = os.environ["BUCKET_NAME"]
 ALLOWED_VEHICLE_TYPES = {"car", "bus", "train", "metro", "tram"}
 ALLOWED_PHONE_POSITIONS = {"hand", "pocket", "bag", "stationary", "other"}
 UUID_RE = re.compile(r"^[0-9a-fA-F-]{32,36}$")
-MAX_SAMPLE_COUNT = 2_000_000
 
 
 def handler(event, context):
@@ -149,8 +148,10 @@ def _validate_body(body):
         raise ValidationError("Trim timestamps must be inside the session duration")
     if uploaded_at_ms < stopped_at_ms:
         raise ValidationError("uploaded_at_ms must be after stopped_at_ms")
-    if sample_count <= 0 or sample_count > MAX_SAMPLE_COUNT:
-        raise ValidationError("sample_count is outside the allowed range")
+    # The count is metadata; samples upload directly to S3. Long recordings
+    # can legitimately exceed two million samples.
+    if sample_count <= 0:
+        raise ValidationError("sample_count must be a positive integer")
 
     sensor_manifest = body["sensor_manifest"]
     if isinstance(sensor_manifest, str):
