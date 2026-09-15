@@ -4,15 +4,26 @@ import 'package:sensors_plus/sensors_plus.dart';
 
 import '../models/sensor_manifest.dart';
 import '../models/sensor_sample.dart';
+import 'sensor_rate_control.dart';
 
 class SensorService {
   SensorService() {
     _start();
   }
 
+  static const _maximumSamplingPeriod = Duration(microseconds: 16667);
+
   final _controller = StreamController<SensorSample>.broadcast();
-  final _window = _SensorRateWindow();
   final _subscriptions = <StreamSubscription<dynamic>>[];
+  final _clock = Stopwatch()..start();
+
+  late final _rateGate = SensorRateGate<_SensorKind>(
+    minimumInterval: _maximumSamplingPeriod,
+    nowMicroseconds: () => _clock.elapsedMicroseconds,
+  );
+  late final _window = SensorRateWindow<_SensorKind>(
+    nowMicroseconds: () => _clock.elapsedMicroseconds,
+  );
 
   GyroscopeEvent? _latestGyro;
   MagnetometerEvent? _latestMag;
@@ -47,32 +58,44 @@ class SensorService {
 
   void _start() {
     _subscriptions.add(
-      gyroscopeEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
+      gyroscopeEventStream(
+        samplingPeriod: SensorInterval.normalInterval,
+      ).listen((event) {
         _gyroscopeAvailable = true;
+        if (!_rateGate.shouldAccept(_SensorKind.gyroscope)) return;
         _latestGyro = event;
         _window.mark(_SensorKind.gyroscope);
       }, onError: (_) => _gyroscopeAvailable = false),
     );
 
     _subscriptions.add(
-      magnetometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
+      magnetometerEventStream(
+        samplingPeriod: SensorInterval.normalInterval,
+      ).listen((event) {
         _magnetometerAvailable = true;
+        if (!_rateGate.shouldAccept(_SensorKind.magnetometer)) return;
         _latestMag = event;
         _window.mark(_SensorKind.magnetometer);
       }, onError: (_) => _magnetometerAvailable = false),
     );
 
     _subscriptions.add(
-      barometerEventStream(samplingPeriod: SensorInterval.normalInterval).listen((event) {
+      barometerEventStream(
+        samplingPeriod: SensorInterval.normalInterval,
+      ).listen((event) {
         _barometerAvailable = true;
+        if (!_rateGate.shouldAccept(_SensorKind.barometer)) return;
         _latestPressure = event.pressure;
         _window.mark(_SensorKind.barometer);
       }, onError: (_) => _barometerAvailable = false),
     );
 
     _subscriptions.add(
-      accelerometerEventStream(samplingPeriod: SensorInterval.gameInterval).listen((event) {
+      accelerometerEventStream(samplingPeriod: _maximumSamplingPeriod).listen((
+        event,
+      ) {
         _accelerometerAvailable = true;
+        if (!_rateGate.shouldAccept(_SensorKind.accelerometer)) return;
         _window.mark(_SensorKind.accelerometer);
         final gyro = _latestGyro;
         final mag = _latestMag;
@@ -104,22 +127,3 @@ class SensorService {
 }
 
 enum _SensorKind { accelerometer, gyroscope, magnetometer, barometer }
-
-class _SensorRateWindow {
-  final _events = <_SensorKind, List<int>>{};
-
-  void mark(_SensorKind kind) {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    final events = _events.putIfAbsent(kind, () => <int>[]);
-    events.add(now);
-    events.removeWhere((timestamp) => now - timestamp > 2000);
-  }
-
-  double? hzFor(_SensorKind kind) {
-    final events = _events[kind];
-    if (events == null || events.length < 2) return null;
-    final durationMs = events.last - events.first;
-    if (durationMs <= 0) return null;
-    return events.length * 1000 / durationMs;
-  }
-}

@@ -13,6 +13,18 @@ The companion backend fix uses strongly consistent invite-code reads.
 iOS inherit these values through Flutter's build settings, and session uploads
 report the version from the installed app's package metadata.
 
+## Sensor sampling rate
+
+The accelerometer requests a 16,667 microsecond sampling period, which is
+approximately 60 Hz. Gyroscope, magnetometer, and barometer streams retain the
+slower platform `normalInterval` request.
+
+Platform sampling periods are advisory and some devices may deliver events
+faster than requested. The app therefore applies an independent 60 Hz maximum
+to every sensor stream before updating cached readings, recording samples, or
+calculating the manifest's `observed_hz`. Excess events are discarded rather
+than buffered. Existing sessions and previously uploaded data are unaffected.
+
 ## Local configuration
 
 Development builds read compile-time values from `config/dev.env`:
