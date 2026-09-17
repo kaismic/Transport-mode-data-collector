@@ -72,6 +72,41 @@ python scripts/create_invite_code.py --code EXAMPLE-INVITE-CODE --participant-id
 
 The script prints a DynamoDB item you can insert manually or with the AWS CLI.
 
+## Label the collection country of existing sessions
+
+Keep participant IDs stable. A country belongs to each session, not to an invite
+code: changing an invite mapping cannot relabel an existing DynamoDB row or S3
+key. `collection_country_code` is a two-letter uppercase country code on the
+session metadata row. The sensor payload in S3 is unchanged.
+
+First create and inspect an explicit manifest. The inventory checks every
+participant row against a downloaded metadata sidecar and payload, and verifies
+that the referenced S3 object exists. It stops on missing or mismatched data.
+
+```powershell
+python scripts/label_session_country.py inventory `
+  --bucket <collector-bucket> --participant-id participant_010 `
+  --country-code KR --output-dir <downloaded-sessions> `
+  --manifest <private-reviewed-manifest.json>
+```
+
+After reviewing the session IDs, apply exactly that manifest:
+
+```powershell
+python scripts/label_session_country.py apply `
+  --manifest <private-reviewed-manifest.json>
+python scripts/label_session_country.py verify `
+  --manifest <private-reviewed-manifest.json>
+```
+
+All three commands accept `--table` (default `TransportSessions`) and `--region`
+(default `ap-southeast-2`) before the subcommand. The apply command uses
+conditional updates and can be rerun; it refuses changed participant, status,
+S3 key, upload timestamp, or a conflicting country label. It does not label
+later uploads. Keep the reviewed manifest outside Git. After applying, use
+`ml/sydney-data-utils` with `"refresh-metadata": true` to update already
+downloaded sidecars and its local catalogue.
+
 ## Upload Headers
 
 The presigned S3 URL is signed for:
