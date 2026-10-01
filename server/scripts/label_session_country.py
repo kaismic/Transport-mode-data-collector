@@ -133,10 +133,12 @@ def inventory(table, s3, bucket, participant_id, country_code, output_dir):
     for indexed in remote:
         session_id = indexed["session_id"]
         item = table.get_item(Key={"session_id": session_id}, ConsistentRead=True).get("Item")
-        if item is None or item.get("status") != "received":
-            raise ValueError(f"Session is absent or not received: {session_id}")
+        if item is None:
+            raise ValueError(f"Session is absent: {session_id}")
         if item.get("participant_id") != participant_id:
             raise ValueError(f"Participant changed for {session_id}")
+        if item.get("status") != "received":
+            continue
         if item.get("collection_country_code") not in (None, country_code):
             raise ValueError(f"Conflicting country label for {session_id}")
         local_item = local.get(session_id)

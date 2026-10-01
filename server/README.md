@@ -80,8 +80,9 @@ key. `collection_country_code` is a two-letter uppercase country code on the
 session metadata row. The sensor payload in S3 is unchanged.
 
 First create and inspect an explicit manifest. The inventory checks every
-participant row against a downloaded metadata sidecar and payload, and verifies
-that the referenced S3 object exists. It stops on missing or mismatched data.
+received participant row against a downloaded metadata sidecar and payload,
+and verifies that the referenced S3 object exists. Pending or otherwise
+unreceived rows are ignored. It stops on missing or mismatched received data.
 
 ```powershell
 python scripts/label_session_country.py inventory `

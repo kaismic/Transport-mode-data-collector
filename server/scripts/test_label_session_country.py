@@ -10,15 +10,21 @@ import label_session_country as labels
 class FakeTable:
     name = "TransportSessions"
 
-    def __init__(self, item):
+    def __init__(self, item, extra_items=None):
         self.item = dict(item)
+        self.items = [self.item, *(dict(extra) for extra in (extra_items or []))]
         self.updates = []
 
     def query(self, **_kwargs):
-        return {"Items": [self.item]}
+        return {"Items": [dict(item) for item in self.items]}
 
-    def get_item(self, **_kwargs):
-        return {"Item": dict(self.item)}
+    def get_item(self, **kwargs):
+        session_id = kwargs["Key"]["session_id"]
+        return next(
+            ({"Item": dict(item)} for item in self.items
+             if item["session_id"] == session_id),
+            {},
+        )
 
     def update_item(self, **kwargs):
         self.updates.append(kwargs)
@@ -80,6 +86,33 @@ class CountryLabelTests(unittest.TestCase):
             self.assertEqual(table.item["collection_country_code"], "KR")
             self.assertEqual(len(s3.checked), 3)
             self.assertIn("ConditionExpression", table.updates[0])
+
+    def test_inventory_ignores_pending_sessions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            received = remote_item()
+            pending = {
+                **remote_item(),
+                "session_id": "session-pending",
+                "status": "pending",
+                "s3_key": "raw/participant_010/device-a/session-pending.json.gz",
+            }
+            payload = root.joinpath(*Path(received["s3_key"]).parts)
+            payload.parent.mkdir(parents=True)
+            payload.write_bytes(b"payload")
+            payload.with_suffix(f"{payload.suffix}.metadata.json").write_text(
+                json.dumps(received), encoding="utf-8"
+            )
+            table, s3 = FakeTable(received, [pending]), FakeS3()
+
+            manifest = labels.inventory(
+                table, s3, "bucket", "participant_010", "KR", root
+            )
+
+            self.assertEqual(
+                [row["session_id"] for row in manifest["sessions"]], ["session-1"]
+            )
+            self.assertEqual(len(s3.checked), 1)
 
     def test_changed_remote_metadata_is_rejected_before_update(self):
         table, s3 = FakeTable(remote_item()), FakeS3()
